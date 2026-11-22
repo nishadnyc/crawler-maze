@@ -10,22 +10,18 @@
 
 *What the logs say · Sunday, November 22, 2026 · counted from the maze's own logs.*
 
-**60,235** crawler hits served · **1,084** unique IPs · **317** subnet log files · **63,215** banned hits
+**61,040** crawler hits served · **1,081** unique IPs · **317** subnet log files · **64,494** banned hits
 
 | Crawler | Requests | Banned hits | IPs | What it was after |
 | --- | ---: | ---: | --- | --- |
-| ClaudeBot | 31,457 | 668 | 1 — all from `216.73.216.60` | Tutorials, Developer pages, robots.txt |
-| GPTBot | 1,361 | 61,334 | 265 | Newsroom, Services, Platform |
-| OAI-SearchBot | 17,031 | 1,213 | 201 | robots.txt |
+| ClaudeBot | 31,767 | 668 | 1 — all from `216.73.216.60` | Tutorials, Developer pages, robots.txt |
+| GPTBot | 1,364 | 62,600 | 267 | Newsroom, Services, Platform |
+| OAI-SearchBot | 17,031 | 1,226 | 201 | robots.txt |
 | facebookexternalhit | 202 | 0 | 76 | robots.txt |
-| Fake old-Chrome scanner fleet | 3,632 | 0 | 61 | favicon.ico |
+| Fake old-Chrome scanner fleet | 4,114 | 0 | 61 | favicon.ico |
 | Credential hunters | 3,342 | 0 | 153 | Probing for /.env, firebase keys and similar files that don't exist here |
-| API hammerer (fake Chrome 147) | 794 | 0 | 22 — mostly from `216.167.0.0/16` (NTT America, Los Angeles, US; operator unknown) | API docs — 792 of its 794 hits went straight to /api, in two short bursts |
-| XML Sitemaps Generator | 505 | 0 | 1 — all from `85.92.66.148` (xml-sitemaps.com's own server, London, UK) | Careers, Marketplace, Help centre |
-| meta-webindexer | 59 | 0 | 35 — all from `57.141.0.0/16` (Meta, Ashburn, Virginia, US) | Pricing, Resources, Status |
-| Claude-User | 9 | 0 | 4 — all from `160.79.106.0/24` (Anthropic, Columbus, Ohio, US) | robots.txt |
 
-**What they were looking for:** robots.txt **21,186** · Tutorials **4,821** · Developer pages **4,519** · API docs **3,589** · sitemap.xml **3,111** · Docs **3,033**
+**What they were looking for:** robots.txt **21,267** · Tutorials **4,847** · Developer pages **4,553** · API docs **3,589** · sitemap.xml **3,212** · Docs **3,048**
 
 Honeypot login form: **0 submissions** — nobody took that bait.
 
