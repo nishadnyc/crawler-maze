@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crawler Maze — an experiment</title>
+<meta name="description" content="An endless maze for AI crawlers: every subdomain serves a plausible fake hosting company, so bots keep digging through fiction instead of hitting a wall. An experiment, built for fun.">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #0b0f14; color: #e6edf3;
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.65;
+  }
+  main { max-width: 860px; margin: 0 auto; padding: 48px 20px 64px; }
+  h1 { font-size: 2.2rem; line-height: 1.2; margin: 0 0 8px; }
+  .tagline { color: #9fb3c8; font-size: 1.1rem; margin: 0 0 28px; }
+  h2 { font-size: 1.3rem; margin: 36px 0 10px; }
+  p { margin: 0 0 14px; }
+  .proof { width: 100%; height: auto; border: 1px solid #22303f; border-radius: 10px; }
+  .caption { color: #9fb3c8; font-size: .92rem; margin-top: 8px; }
+  .stats { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 6px; }
+  .stat {
+    background: #111927; border: 1px solid #22303f; border-radius: 10px;
+    padding: 10px 14px; min-width: 130px; flex: 1;
+  }
+  .stat b { display: block; font-size: 1.25rem; }
+  .stat span { color: #9fb3c8; font-size: .85rem; }
+  blockquote {
+    margin: 28px 0; padding: 14px 18px; border-left: 3px solid #2f81f7;
+    background: #111927; border-radius: 0 10px 10px 0; font-style: italic;
+  }
+  a { color: #58a6ff; }
+  footer { color: #9fb3c8; font-size: .9rem; margin-top: 44px; border-top: 1px solid #22303f; padding-top: 16px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Crawler Maze</h1>
+  <p class="tagline">An endless maze for AI crawlers — an experiment, built for fun.</p>
+
+  <img class="proof" src="proof.png" alt="One morning in the maze — what the logs say">
+  <p class="caption">One morning in the maze, by the numbers, from the maze's own logs (Sunday, November 22, 2026).</p>
+
+  <div class="stats">
+    <div class="stat"><b>21,639</b><span>crawler hits in one morning</span></div>
+    <div class="stat"><b>14,042</b><span>requests from ClaudeBot alone</span></div>
+    <div class="stat"><b>128</b><span>distinct bot groups</span></div>
+    <div class="stat"><b>2,082</b><span>banned hits</span></div>
+  </div>
+
+  <h2>The idea</h2>
+  <p>The web is crawled constantly by AI bots — ClaudeBot, GPTBot and friends — that fetch pages, store what they find, and follow links at enormous scale. Most sites respond one of two ways: let the bots in, or try to keep them out. This project does neither. <strong>It feeds them.</strong></p>
+  <p>Any subdomain of a wildcard domain that has no real site answers with a complete, plausible-looking hosting company: readable articles, plans and pricing, documentation, FAQs, testimonials — the works. Every page links onward to more pages and more subdomains. There is no last page. A crawler that wanders in finds what looks like a gold mine and just keeps digging.</p>
+  <p>Each subdomain is one self-consistent fake company. Its identity is seeded from the subdomain itself, so the same address always shows the same company — same brand, same prices, same people. But the network as a whole is infinite: every new subdomain is another company, another site to crawl, and no crawler ever finishes.</p>
+  <p>The point is an experiment: watch how crawlers behave when the web answers with fiction instead of walls — how deep they dig, how long they stay, and what they swallow without ever stepping back to notice the pattern. The heaviest crawlers are logged per subnet and eventually rate-limited, and a hidden login form catches the bots that try to sign up.</p>
+  <p>It's not a product. Nothing is sold, there are no real customers — just a maze, and the bots are the visitors it was built for.</p>
+
+  <blockquote>Every one of those hits was a page that doesn't exist, for a company that doesn't exist. They kept reading anyway.</blockquote>
+
+  <h2>Run it yourself</h2>
+  <p>The whole maze is one self-contained PHP file plus a small <code>.htaccess</code>. It also runs in Docker — one command, with a CI build that proves it works. Source, logs and instructions are on <a href="https://github.com/nishadnyc/crawler-maze">GitHub</a>.</p>
+
+  <footer>Crawler Maze — an experiment. The bots were the visitors it was built for.</footer>
+</main>
+</body>
+</html>
