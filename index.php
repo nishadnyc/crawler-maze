@@ -519,6 +519,23 @@ $pageRef=bin2hex(random_bytes(9));
 
 $used=[]; $mainLink=buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$linkDomain); $used[$mainLink['url']]=true;
 $links=uniqueLinks(80,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain);
+// EXPLORE LABEL PREFIXES (Nishad 2026-11-22): buildUrl() derives each
+// label from the link's HOST, and every Explore link sits on the one
+// cookie/link domain - so all 80 labels opened with the SAME two
+// words (host create-base.* gave "Create Base Features", "Create
+// Base Reviews", ...). The URL behaviour does NOT change: Explore
+// hrefs stay on the visitor's cookie link domain exactly as before.
+// Only the visible label prefix is replaced, per link, with a fresh
+// random name drawn the same way buildUrl() picks random subdomain
+// words (a $subWords pick, sometimes hyphen-joined to a second one),
+// de-duplicated across the section and never equal to the old fixed
+// prefix - e.g. "Vivid Nest Features", "Cloud Works Reviews". The
+// path-derived part of the label is kept as-is. Scoped to the
+// Explore list ($links) ONLY: footer Sitemap labels, the hash
+// copyright link and all other lists keep their existing rules.
+$exploreOldPrefix=titleWords(explode('.',$linkDomain)[0]); $explorePrefixes=[];
+foreach($links as &$exploreLink){ $explorePt=pathTitle($exploreLink['path']); $explorePrefix=''; $exploreTries=0; while($exploreTries<200){ $exploreTries++; $exploreW=pick($subWords); if(random_int(0,2)===0) $exploreW.='-'.pick($subWords); $exploreCand=titleWords($exploreW); if($exploreCand===$exploreOldPrefix || isset($explorePrefixes[$exploreCand])) continue; $explorePrefix=$exploreCand; break; } if($explorePrefix==='') $explorePrefix=titleWords(pick($subWords)).' '.random_int(2000,3000); $explorePrefixes[$explorePrefix]=true; $exploreLink['label']=$explorePrefix.($explorePt!==''?' '.$explorePt:''); }
+unset($exploreLink);
 $extraLinks=uniqueLinks(18,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain);
 $relatedLinks=uniqueLinks(6,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain);
 $footerLinks=uniqueLinks(40,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain);
