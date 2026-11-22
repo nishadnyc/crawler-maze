@@ -183,6 +183,71 @@ $featureDetails=[
 ['30-day money-back guarantee','If the service is not right for you, cancel within 30 days of signing up for a full refund of the hosting fee.'],
 ['24/7 expert support','Real hosting engineers answer tickets and live chat around the clock, including weekends and holidays.'],
 ];
+// ---------------------------------------------------------------------------
+// PRODUCT-FOCUS COHERENCE (cold-review fix 2026-11-22): a host's product
+// focus ($topic, e.g. "Python hosting") was picked independently of the
+// feature set, so a "Python Hosting" host could list a PHP version
+// selector, WordPress installers and "served without running PHP" - and
+// no Python features at all. Features are now filtered per host (Phase A
+// builds $hostFeatureDetails): stack-specific entries only ever appear
+// on hosts whose focus supports that stack, and each stack focus gets
+// its own matching features guaranteed into the selection.
+// $featureStackTags: existing $featureDetails entries that belong to a
+// specific stack (name => stacks). Untagged entries are generic and
+// suit every focus. $stackFeatureDetails: extra features that only
+// exist for the named stack. $focusNeedles maps a $topics entry to its
+// stack key; $focusAllowed lists which stacks' features may appear
+// together (the PHP ecosystem - WordPress/WooCommerce/Laravel - runs on
+// PHP, so those specifics are coherent on each other's hosts and on a
+// plain PHP host; Python/Node/Docker stand alone).
+// ---------------------------------------------------------------------------
+$featureStackTags=[
+'One-click installers'=>['wordpress','woocommerce'],
+'PHP version selector'=>['php','wordpress','laravel','woocommerce'],
+'Redis object caching'=>['wordpress','woocommerce','laravel','php'],
+'Web application firewall'=>['wordpress','woocommerce'],
+'Built-in page caching'=>['php','wordpress','laravel','woocommerce'],
+'Security patching'=>['php','wordpress','laravel','woocommerce'],
+];
+$stackFeatureDetails=[
+'python'=>[
+['Python version selector','Choose the Python version each application runs - from 3.9 up to the latest 3.13 - and switch versions per project without redeploying.'],
+['WSGI and ASGI app servers','Gunicorn and Uvicorn workers run behind the web server with sensible defaults, so Django, Flask and FastAPI applications serve traffic the way they expect.'],
+['Virtual environments per app','Every Python application gets its own virtualenv and pip cache, so one project\'s dependencies never clash with another\'s.'],
+],
+'node'=>[
+['Node.js version manager','Switch Node.js versions per application, from older LTS releases to the current release, without touching the rest of the account.'],
+['npm and yarn build steps','Install and build steps run automatically on deployment, with the module cache kept between builds so repeat deploys are fast.'],
+['Managed Node processes','Your Node applications run under a process manager that restarts them after a crash or a deployment, and keeps a separate log for each application.'],
+],
+'wordpress'=>[
+['Automatic WordPress updates','WordPress core, themes and plugins are updated automatically and checked afterwards, so security releases never sit waiting to be applied.'],
+],
+'woocommerce'=>[
+['WooCommerce-ready caching','Cart, checkout and account pages are excluded from the page cache automatically, while product and category pages stay cached and fast.'],
+],
+'laravel'=>[
+['Composer and Artisan built in','Composer and the Artisan command line are available over SSH and from the control panel, so deployments and maintenance run the normal Laravel way.'],
+['Queue workers and scheduler','Queue workers run under a supervisor that restarts them after each deployment, and the single cron entry the Laravel scheduler needs is set up for you.'],
+],
+'php'=>[
+['Composer support','Composer is installed and kept current, so PHP projects install and update their dependencies the standard way.'],
+],
+'docker'=>[
+['Docker and Compose deploys','Deploy from a Dockerfile or a Compose file straight from your repository, with the previous build kept for a one-click rollback.'],
+['Per-container resource limits','Each container gets its own CPU and memory limits, so one busy service cannot starve the others on the account.'],
+],
+'kubernetes'=>[
+['Managed Kubernetes clusters','Clusters are provisioned and upgraded for you, with worker nodes sized to the plan and cluster health monitored around the clock.'],
+['Private container registry','Push images to a private registry on your account and deploy them to your cluster without sending them to a third party.'],
+],
+];
+// Focus detection is by substring, not exact topic match: the expanded
+// topic pool also builds topics like "WordPress backups" or "ecommerce
+// platform", which imply the same stack. First match wins, so more
+// specific stacks are listed before the PHP ecosystem they run on.
+$focusNeedles=['kubernetes'=>'kubernetes','docker'=>'docker','wordpress'=>'wordpress','woocommerce'=>'woocommerce','laravel'=>'laravel','python'=>'python','node.js'=>'node','node'=>'node','ecommerce'=>'ecommerce','php'=>'php'];
+$focusAllowed=['wordpress'=>['wordpress','woocommerce','php'],'woocommerce'=>['woocommerce','wordpress','php'],'laravel'=>['laravel','php'],'php'=>['php','laravel','wordpress','woocommerce'],'python'=>['python'],'node'=>['node'],'docker'=>['docker'],'kubernetes'=>['kubernetes','docker'],'ecommerce'=>['woocommerce','wordpress','php']];
 $articleTitles=['How to speed up a slow WordPress site','Choosing the right hosting plan for a growing business','What to check before migrating your website','A practical guide to website backups','How SSL certificates work and why every site needs one','Caching explained: why your second page load is faster','How to set up a staging site before a big update','Reading your server resource graphs without guessing','What uptime monitoring actually tells you','Keeping WordPress plugins updated without breaking your site','How to move email to your own domain','When a shared plan stops being enough','Database optimisation for busy WooCommerce stores','How CDNs deliver your pages from closer to home','A checklist for launching a new website','Recovering a hacked site: first steps that matter','How PHP versions affect your site speed','Setting up cron jobs for routine maintenance','What to do when traffic suddenly spikes','Understanding bandwidth, visits and resource limits','How automatic security patching protects older sites','Testing a redesign on staging before anyone sees it','Why page speed affects search rankings and sales','Backing up before a sale, a launch or a redesign','How to choose a data centre location','Moving from another host without downtime','What a web application firewall blocks, in plain terms','Making a small business website load in under two seconds','How to spot a plugin that is slowing your site down','Preparing your store for a busy weekend','The difference between backups and snapshots','How DNS changes propagate when you move hosts','Securing the admin area of your website','What happens when you outgrow your plan','A calm guide to restoring a backup','How object caching helps logged-in users','Email deliverability: why messages land in spam','Monitoring a portfolio of client sites from one account','How to give a developer access without sharing your password','Planning capacity for a site that keeps growing'];
 $corpusParas=[
 '{brand} hosts websites for small businesses, shops and independent developers who need their sites to load quickly and stay online. Every plan runs on NVMe storage in {city} and other data centres, with page caching switched on by default.',
@@ -816,7 +881,29 @@ $geoPlace=$geoPlaces[mt_rand(0,count($geoPlaces)-1)];
 // independent per-plan feature picks let a cheaper plan list features
 // the pricier ones lacked, and no plan had any specs at all (Claude
 // review 2026-11-22). JSON-LD price stays $plans[0] (cheapest tier).
-$planFeatPool=picks(array_column($featureDetails,0),8); $planSpecTiers=[[1,1,10,100],[2,2,25,250],[4,4,50,500]];
+// HOST FEATURE POOL (product-focus coherence, see SECTION 2): built
+// HERE under the host seed from $topic's stack. Generic-focus hosts get
+// the full $featureDetails list untouched (same picks as before, so
+// their identities do not shift); a stack focus filters out entries
+// tagged for other stacks and adds its own stack's features, two of
+// which are guaranteed into the plan pool below. No mt_rand is consumed
+// by the filtering itself.
+$focusStack=''; foreach($focusNeedles as $focusNeedle=>$focusVal){ if(str_contains(strtolower($topic),$focusNeedle)){ $focusStack=$focusVal; break; } }
+$hostFeatureDetails=$featureDetails; $hostStackDetails=[];
+if($focusStack!==''){
+    $allowedStacks=$focusAllowed[$focusStack]??[$focusStack];
+    $hostFeatureDetails=[];
+    foreach($featureDetails as $fd){ $fdTags=$featureStackTags[$fd[0]]??[]; if($fdTags===[] || array_intersect($fdTags,$allowedStacks)) $hostFeatureDetails[]=$fd; }
+    $seenFeatNames=array_column($hostFeatureDetails,0);
+    foreach($allowedStacks as $st){ foreach($stackFeatureDetails[$st]??[] as $sfd){ if(!in_array($sfd[0],$seenFeatNames,true)){ $hostFeatureDetails[]=$sfd; $hostStackDetails[]=$sfd; $seenFeatNames[]=$sfd[0]; } } }
+}
+if($hostStackDetails){
+    $stackFeatNames=array_column($hostStackDetails,0); $guaranteedFeats=picks($stackFeatNames,min(2,count($stackFeatNames)));
+    $planFeatPool=rshuffle(array_merge($guaranteedFeats, picks(array_values(array_diff(array_column($hostFeatureDetails,0),$stackFeatNames)), 8-count($guaranteedFeats))));
+} else {
+    $planFeatPool=picks(array_column($hostFeatureDetails,0),8);
+}
+$planSpecTiers=[[1,1,10,100],[2,2,25,250],[4,4,50,500]];
 // Plan NAMES follow tier order (cold-review fix 2026-11-22): the old
 // picks($planNames,3) drew 3 names in random order, so some hosts sold
 // "Enterprise" as the cheapest tier and "Starter" as the priciest.
@@ -891,7 +978,17 @@ if($slugTopic!==null){
     elseif($layout==='docs'){ $heading=$slugTopic['name']; $title=$slugTopic['name'].' - '.$brand.' Documentation'; }
     else { $heading=$slugTopic['name'].' - '.$brand; $title=$heading; }
 }
-$featDetailsSel=picks($featureDetails,8); $myFeatures=array_map(fn($fd)=>$fd[0], $featDetailsSel); $myTags=picks($tags,14); $myKeywords=array_merge(picks($keywordsExtra,8), $myTags, [$topic,$brand.' hosting', $brand]);
+// Features section draws ONLY from this host's coherent pool (Phase A):
+// a stack host can never show another stack's features on any page,
+// and two of its own stack's features are guaranteed into the section.
+if($hostStackDetails){
+    $stackSel=picks($hostStackDetails,min(2,count($hostStackDetails)));
+    $restFeatPool=array_values(array_filter($hostFeatureDetails,fn($fd)=>!in_array($fd[0],array_column($stackSel,0),true)));
+    $featDetailsSel=array_merge($stackSel, picks($restFeatPool, 8-count($stackSel)));
+} else {
+    $featDetailsSel=picks($hostFeatureDetails,8);
+}
+$myFeatures=array_map(fn($fd)=>$fd[0], $featDetailsSel); $myTags=picks($tags,14); $myKeywords=array_merge(picks($keywordsExtra,8), $myTags, [$topic,$brand.' hosting', $brand]);
 $description=dedupeWords($brand.' - '.$heading.'. Explore '.$topic.', '.implode(', ',array_slice($myFeatures,0,4)).', pricing, documentation, guides and support. Trusted hosting in '.$geoPlace['name'].' and worldwide.');
 $myFaqs=picks($faqPairs,5); $myTestimonials=$hostTestimonials; $myGlossary=picks($glossary,4);
 
@@ -939,6 +1036,18 @@ $readMinutes=mt_rand(4,18); $commentCount=mt_rand(0,89); $viewCount=number_forma
 $pageRef=substr(md5($host.'|'.$requestPath),0,18);
 
 $used=[]; $mainLink=buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$linkDomain); $used[$mainLink['url']]=true;
+// TRIAL CTA TARGET (cold-review fix 2026-11-22): the "Start your free
+// trial" button used to reuse $mainLink - a random maze article on the
+// cookie link domain - so following it landed on an unrelated blog
+// post with no signup in sight. The CTA now points at a plausible
+// start page on the VISITED host itself: /pricing/getting-started/
+// (a pricing-layout page whose slug topic is getting started). The ID
+// is hash-derived from the host - no mt_rand consumed, so no seeded
+// sequence shifts - which makes the target identical on every page of
+// the host and stable across fetches.
+$trialId=10000 + (hexdec(substr(hash('sha256','trial|'.$host),0,6)) % 89999);
+$trialLink=['url'=>$scheme.'://'.$host.$port.'/pricing/getting-started/'.$trialId,'path'=>'/pricing/getting-started/'.$trialId,'section'=>'pricing'];
+$used[$trialLink['url']]=true;
 $exploreCount=['home'=>80,'article'=>48,'guide'=>40,'docs'=>32,'pricing'=>24,'company'=>24,'status'=>16][$layout] ?? 40;
 $links=uniqueLinks($exploreCount,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain);
 // Explore labels come straight from buildUrl() now (see REALISTIC LINK
@@ -1106,7 +1215,7 @@ header('Link: <'.$canonical.'>; rel="canonical"');
 <h1><?=e($heading)?></h1>
 <?php endif; ?>
 <?php foreach(array_slice($paragraphs,0,3) as $p): ?><p><?=e($p)?></p><?php endforeach; ?>
-<a class="btn" href="<?=e($mainLink['url'])?>">Start your free trial with <?=e($brand)?></a>
+<a class="btn" href="<?=e($trialLink['url'])?>">Start your free trial with <?=e($brand)?></a>
 <h2>On this page</h2><ul><?php foreach(array_values(array_filter([['features','Key features'],['pricing','Pricing plans'],['faq','Frequently asked questions'],['testimonials','What customers say'],['glossary','Glossary'],['status','Service status'],['steps','Step by step'],['statusboard','Current service status'],['company','About us']], fn($o)=>in_array($o[0],$sectionOrder,true))) as $otp): ?><li><a href="#<?=e($otp[0])?>"><?=e($otp[1])?> - <?=e($topic)?></a></li><?php endforeach; ?></ul>
 <?php foreach(array_slice($paragraphs,3) as $p): ?><p><?=e($p)?></p><?php endforeach; ?>
 
