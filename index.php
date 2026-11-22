@@ -412,10 +412,16 @@ if ($requestPath === '/favicon.ico') {
 // site that simply is not WordPress, so scanners lose interest.
 // (The hit was already logged/counted in SECTION 6 as usual.)
 $probePath = (bool)preg_match('#^/(wp-|xmlrpc\.php|\.env|\.git|phpinfo)#i', $requestPath);
-// Plus one simple blanket rule (Nishad 2026-11-22): ANY path ending in
-// .php (/database.php, /config.php, ...) is a probe - generated maze
-// paths never end in .php - so it gets the plain 404 too.
-if (str_ends_with(strtolower($requestPath), '.php')) $probePath = true;
+// Plus one simple blanket rule (Nishad 2026-11-22): ANY path whose last
+// segment carries a file extension (/database.php, /install.php,
+// /backup.sql, /.env, ...) is a probe - generated maze paths never
+// contain an extension (they end in a slug or a 2000-3000 number) - so
+// it gets the plain 404 too. The only extension URLs that stay valid
+// are the special routes handled in this file: /robots.txt,
+// /sitemap.xml and /favicon.ico (which already exited above).
+$lastSeg = substr($requestPath, strrpos($requestPath, '/') + 1);
+if ($requestPath !== '/robots.txt' && !str_ends_with($requestPath, 'sitemap.xml')
+    && preg_match('/\.[a-z0-9]+$/i', $lastSeg)) $probePath = true;
 $mazePathOk = ($requestPath === '/' || $requestPath === '/robots.txt' || str_ends_with($requestPath, 'sitemap.xml'));
 if ($probePath) $mazePathOk = false;
 if (!$mazePathOk) {
