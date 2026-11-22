@@ -59,14 +59,48 @@ if (empty($_COOKIE['maze_visit'])) {
 //   e()       HTML-escape a string before printing it into the page
 //   slugify() lowercase a string and turn non-alphanumerics into dashes
 // ---------------------------------------------------------------------------
-function pick(array $a): string { return $a[random_int(0, count($a)-1)]; }
-function picks(array $a, int $n): array { $o=[];$c=$a; for($i=0;$i<$n&&$c;$i++){ $k=random_int(0,count($c)-1); $o[]=$c[$k]; array_splice($c,$k,1);} return $o; }
+function pick(array $a): string { return $a[mt_rand(0, count($a)-1)]; }
+function picks(array $a, int $n): array { $o=[];$c=$a; for($i=0;$i<$n&&$c;$i++){ $k=mt_rand(0,count($c)-1); $o[]=$c[$k]; array_splice($c,$k,1);} return $o; }
+// SEEDED RNG (2026-11-22): pick()/picks() run on mt_rand, and srand2()
+// seeds that Mersenne Twister deterministically from a string. Page
+// generation re-seeds in phases (pool build, host identity, page
+// content) so the same host/URL always generates the same page with
+// NO stored state anywhere - pure math from the host/path strings.
+// Only content/presentation uses this; ban logic, log timestamps,
+// cookie tokens and honeypot handling keep the crypto RNG / time().
+function srand2(string $seed): void { mt_srand((int)(hexdec(substr(hash('sha256', $seed), 0, 8)) & 0x7fffffff)); }
+function rint(int $min, int $max): int { return mt_rand($min, $max); }
+function rshuffle(array $a): array { for($i=count($a)-1;$i>0;$i--){ $j=mt_rand(0,$i); $tmp=$a[$i]; $a[$i]=$a[$j]; $a[$j]=$tmp; } return $a; }
 function e(string $s): string { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8'); }
 function slugify(string $s): string { return preg_replace('/[^a-z0-9]+/','-', strtolower($s)); }
 // Collapse consecutive duplicate words (case-insensitive): "Zone Zone" ->
 // "Zone", "Help Centre Centre" -> "Help Centre", "flexible, flexible" ->
 // "flexible,". Doubled words are a classic generator smell (audit B2).
 function dedupeWords(string $s): string { do { $prev=$s; $s=preg_replace('/\b(\w+)([\s,]+)\1\b/i', '$1', $s); } while ($s !== $prev); return $s; }
+
+// FAVICON PER HOST (audit B8): build a tiny 16x16 ICO on the fly - a
+// two-tone glyph (square / diamond / disc) whose colours and shape are
+// chosen by the caller from the host seed, so each host has its OWN
+// favicon but always serves the same one. No stored file.
+function mazeFaviconIco(array $bg, array $fg, int $shape): string {
+    $size = 16; $xor = '';
+    for ($row = $size - 1; $row >= 0; $row--) {           // BMP rows are bottom-up
+        for ($col = 0; $col < $size; $col++) {
+            $cx = $col - 7.5; $cy = $row - 7.5;
+            if ($shape === 0) $in = ($col >= 4 && $col <= 11 && $row >= 4 && $row <= 11);
+            elseif ($shape === 1) $in = (abs($cx) + abs($cy) <= 5.5);
+            else $in = (($cx * $cx + $cy * $cy) <= 26);
+            $c = $in ? $fg : $bg;
+            $xor .= chr($c[2]) . chr($c[1]) . chr($c[0]) . chr(255);   // BGRA
+        }
+    }
+    $mask = str_repeat("\0", $size * 4);                 // AND mask: 16 rows x 4 bytes
+    $bmp = pack('V', 40) . pack('l', $size) . pack('l', $size * 2) . pack('v', 1) . pack('v', 32)
+         . pack('V', 0) . pack('V', strlen($xor) + strlen($mask))
+         . pack('V', 0) . pack('V', 0) . pack('V', 0) . pack('V', 0)
+         . $xor . $mask;
+    return pack('vvv', 0, 1, 1) . pack('CCCCvvVV', $size, $size, 0, 0, 1, 32, strlen($bmp), 22) . $bmp;
+}
 
 // ---------------------------------------------------------------------------
 // SECTION 2 - Content pools (base lists)
@@ -112,6 +146,11 @@ $keywordsExtra=['best web hosting','cheap cloud hosting','fast WordPress hosting
 // random picks at render time, two identical pages are practically
 // impossible - which is the whole point of the maze.
 // ---------------------------------------------------------------------------
+// The pool build itself is seeded per host ('pool|<host>'): the
+// expanded pools must be identical on every request for a host, or
+// the Phase A/B picks in SECTION 8 would land on different entries.
+$poolHost = explode(':', (string)($_SERVER['HTTP_HOST'] ?? 'localhost'), 2)[0];
+srand2('pool|' . $poolHost);
 // --- Expanded combinatorial pools: hundreds to thousands per category ---
 $brandPre=['Cloud','Nexa','Orbit','Prime','Vertex','Host','Panel','Sky','Nova','Aero','Blue','Core','Data','Echo','Flux','Grid','Hyper','Ion','Jet','Kite','Lumen','Metro','Nimbus','Onyx','Pixel','Quantum','Rapid','Solar','Titan','Ultra','Vivid','Wave','Xenon','Zenith','Alpha','Beta','Swift','Bright','Clear','Smart','True','Next','Pro','Max'];
 $brandSuf=['Host','Cloud','Panel','Stack','Nest','Sphere','Works','Serve','Peak','Haven','Lab','Hub','Base','Forge','Link','Path','Port','Gate','Zone','Core'];
@@ -122,7 +161,7 @@ foreach($topicPre as $tp){ foreach(picks($topicSuf,4) as $ts){ $topics[]=$tp.' '
 foreach($adjectives as $a){ foreach($nouns as $n){ $features[]=$a.' '.$n.' management'; $features[]=$a.' '.$n.' protection'; } } $features=array_values(array_unique($features));
 foreach($sections as $s){ foreach(['guide','hub','centre','portal','lab','index','overview'] as $x){ $docPages[]=$s.'-'.$x; } } $docPages=array_values(array_unique($docPages));
 foreach($blogTopics as $b){ foreach(['in 2024','in 2025','in 2026','for beginners','for businesses','step by step','explained simply','with examples','like a pro','on a budget'] as $x){ $blogTopics[]=$b.' '.$x; } } $blogTopics=array_values(array_unique($blogTopics));
-foreach($subWords as $w){ foreach(['hub','lab','zone','base','port','works','online','central','direct','plus'] as $x){ if(random_int(0,3)===0) $subWords[]=$w.'-'.$x; } } $subWords=array_values(array_unique($subWords));
+foreach($subWords as $w){ foreach(['hub','lab','zone','base','port','works','online','central','direct','plus'] as $x){ if(mt_rand(0,3)===0) $subWords[]=$w.'-'.$x; } } $subWords=array_values(array_unique($subWords));
 $firstNames=['Alex','Sarah','David','Emma','James','Priya','Michael','Lisa','Anna','Mark','Sophie','Ryan','Nina','Oliver','Grace','Ben','Tom','Kate','Sam','Mia','Leo','Zoe','Adam','Eva','Chris','Dana','Paul','Ruth','Hugo','Ivy'];
 $lastNames=['Morgan','Lee','Chen','Wilson','Taylor','Patel','Brown','Garcia','Kim','Johnson','Turner','Clark','Shah','Reed','Liu','Carter','Moore','Hall','Young','King','Scott','Green','Baker','Adams','Nelson','Hill','Ramirez','Campbell','Mitchell','Carter'];
 foreach($firstNames as $fn){ $authors[]=$fn.' '.pick($lastNames); } $authors=array_values(array_unique($authors));
@@ -399,7 +438,13 @@ if ($shouldBlock) {
 if ($requestPath === '/favicon.ico') {
     header('Content-Type: image/x-icon');
     header('Cache-Control: public, max-age=86400');
-    echo base64_decode('AAABAAEAEBAAAAEAIABoBAAAFgAAACgAAAAQAAAAIAAAAAEAIAAAAAAAQAQAAAAAAAAAAAAAAAAAAAAAAAD4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/+L04//i9OP/4vTj/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==');
+    // Per-host favicon (audit B8): colours + glyph shape from a hash
+    // of the hostname - same host, same icon, forever; no file stored.
+    $favPalettes = [[[15,23,42],[56,189,248]], [[15,23,42],[52,211,153]], [[15,23,42],[251,191,36]], [[15,23,42],[244,114,182]], [[15,23,42],[167,139,250]], [[15,23,42],[251,146,60]], [[56,189,248],[15,23,42]], [[52,211,153],[15,23,42]]];
+    $favSeed = crc32('fav|' . $host) & 0x7fffffff;
+    $favPal = $favPalettes[$favSeed % count($favPalettes)];
+    $favShape = intdiv($favSeed, count($favPalettes)) % 3;
+    echo mazeFaviconIco($favPal[0], $favPal[1], $favShape);
     exit;
 }
 // EXPLICIT PROBE PATHS (Nishad 2026-11-22): WordPress / vulnerability
@@ -429,11 +474,23 @@ if (!$mazePathOk) {
     if (count($pseg) === 3 && in_array($pseg[0], $sections, true)
         && preg_match('/^[a-z0-9]+(-[a-z0-9]+)*$/', $pseg[1])
         && preg_match('/^\d{4}$/', $pseg[2]) && (int)$pseg[2] >= 2000 && (int)$pseg[2] <= 3000) $mazePathOk = true;
+    // LEGACY SHAPE (2026-11-22): links generated BEFORE the slug
+    // change (commit 8aba5b1) were /<section>/<number> with no slug
+    // segment. Crawlers still hold those URLs in their queues, so
+    // the two-segment legacy shape is a valid maze path too -
+    // otherwise long-lived bots bounce off 404s on their backlog
+    // instead of re-entering the maze.
+    if (count($pseg) === 2 && in_array($pseg[0], $sections, true)
+        && preg_match('/^\d{4}$/', $pseg[1]) && (int)$pseg[1] >= 2000 && (int)$pseg[1] <= 3000) $mazePathOk = true;
 }
 if (!$mazePathOk) {
     http_response_code(404);
     header('Content-Type: text/html; charset=UTF-8');
-    echo '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>404 Not Found - ' . e($currentName) . '</title></head><body style="font-family:system-ui,sans-serif;margin:64px auto;max-width:640px;padding:0 24px"><h1>404 Not Found</h1><p>The page you requested could not be found. It may have been moved or deleted.</p><p><a href="/">Return to the homepage</a></p></body></html>';
+    header('X-Served-By: ' . $host);
+    // The 404 carries the host's Phase-A brand (reproduced here with
+    // the same seed + first pick), not the titlecased subdomain words.
+    srand2('brand|' . $host); $brand404 = $brands[mt_rand(0, count($brands) - 1)];
+    echo '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>404 Not Found - ' . e($brand404) . '</title></head><body style="font-family:system-ui,sans-serif;margin:64px auto;max-width:640px;padding:0 24px"><h1>404 Not Found</h1><p>The page you requested could not be found. It may have been moved or deleted.</p><p><a href="/">Return to the homepage</a></p></body></html>';
     exit;
 }
 // ---------------------------------------------------------------------------
@@ -461,8 +518,9 @@ if (str_ends_with($requestPath, 'sitemap.xml')) {
     // byte-identical. Generation is driven by mt_rand seeded with
     // crc32(host + New York date) instead of the crypto RNG, and paths
     // are built directly in buildUrl()'s shape (/<section>/<slug>/
-    // <2000-3000>) - buildUrl itself uses random_int and cannot be
-    // seeded. lastmod dates spread over the same wide 2-900 day range
+    // <2000-3000>) with its own mt_srand below, because the sitemap
+    // seed is host+DAY while page generation uses host/host+path
+    // seeds - the two must not share an mt sequence. lastmod dates spread over the same wide 2-900 day range
     // as page dates instead of all landing within the last 5 days.
     mt_srand(crc32($host . '|' . $todayStr));
     $smPick = function (array $a) { return $a[mt_rand(0, count($a) - 1)]; };
@@ -589,13 +647,43 @@ if ($cookieLinkDomain === '') {
 // visitor's cookie domain, only their visible titles now differ.
 function titleWords($slug): string { return ucwords(str_replace('-',' ',(string)$slug)); }
 function pathTitle($path): string { $parts=[]; foreach(explode('/',trim((string)$path,'/')) as $seg){ if($seg===''||is_numeric($seg)) continue; $parts[]=titleWords($seg); } return implode(' ',$parts); }
-function buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$linkHost=null): array { if($linkHost!==null && $linkHost!==''){ $w=explode('.',$linkHost)[0]; $urlHost=$linkHost; } else { $w=pick($subWords); if(random_int(0,2)===0) $w.='-'.pick($subWords); $urlHost=$w.'.'.$baseDomain; } $s=pick($sections); $slug=trim(slugify(titleWords(pick($docPages))),'-'); if($slug==='') $slug=$s; $path='/'.$s.'/'.$slug.'/'.random_int(2000,3000); $pt=pathTitle($path); $label=titleWords($w); if($pt!=='') $label.=' '.$pt; $label=dedupeWords($label); return ['label'=>$label,'url'=>$scheme.'://'.$urlHost.$port.$path,'path'=>$path,'section'=>$s]; }
+function buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$linkHost=null): array { if($linkHost!==null && $linkHost!==''){ $w=explode('.',$linkHost)[0]; $urlHost=$linkHost; } else { $w=pick($subWords); if(mt_rand(0,2)===0) $w.='-'.pick($subWords); $urlHost=$w.'.'.$baseDomain; } $s=pick($sections); $slug=trim(slugify(titleWords(pick($docPages))),'-'); if($slug==='') $slug=$s; $path='/'.$s.'/'.$slug.'/'.mt_rand(2000,3000); $pt=pathTitle($path); $label=titleWords($w); if($pt!=='') $label.=' '.$pt; $label=dedupeWords($label); return ['label'=>$label,'url'=>$scheme.'://'.$urlHost.$port.$path,'path'=>$path,'section'=>$s]; }
 // De-duplicates by URL (via $used, shared across lists) AND by label
 // within the returned list, so every visible title in one list is
 // distinct even though the trailing path number is not part of it.
 function uniqueLinks($n,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,&$used,$linkHost=null): array { $out=[];$tries=0;$labels=[]; while(count($out)<$n&&$tries<$n*40){ $tries++; $c=buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$linkHost); if(isset($used[$c['url']])||isset($labels[$c['label']])) continue; $used[$c['url']]=true; $labels[$c['label']]=true; $out[]=$c; } return $out; }
 
-$brand=pick($brands); $topic=pick($topics); $category=pick($categories);
+// ---------------------------------------------------------------------------
+// SEEDED PER-HOST STABILITY (Nishad 2026-11-22): NO storage of any
+// kind - every trait below is derived deterministically from a hash
+// of the hostname (Phase A) or hostname+path (Phase B), computed on
+// the fly with the seeded mt_rand. The same URL fetched twice
+// returns the SAME company and the SAME page; a different host
+// still gets a different company, and the maze stays infinite.
+// Session/ban mechanics (cookies, honeypot tokens, log timestamps)
+// deliberately do NOT use this seeded RNG - content/presentation
+// only.
+// Phase A - HOST IDENTITY (seed 'brand|<host>'): frozen before
+// anything else consumes page randomness. The FIRST pick under
+// this seed is the brand, so the 404 page (SECTION 6b) reproduces
+// the same brand with the same seed. Host traits never change on
+// any path or fetch: brand, topic, accent, geo, pricing ladder,
+// uptime, sites hosted, response time, status line.
+srand2('brand|'.$host);
+$brand=pick($brands); $topic=pick($topics);
+$accent=pick(['#38bdf8','#34d399','#fbbf24','#f472b6','#a78bfa','#fb923c']);
+$geoPlace=$geoPlaces[mt_rand(0,count($geoPlaces)-1)];
+$plans=[]; $ladderCents=mt_rand(199,999); foreach(picks($planNames,3) as $pn){ $plans[]=['name'=>$pn,'price'=>number_format($ladderCents/100,2),'feats'=>picks($features,4)]; $ladderCents+=mt_rand(200,1500); }
+$planPrice=$plans[0]['price'];
+$includedPlan=$plans[1]['name'];
+$planName=pick($planNames);
+$uptimeStr='98.'.mt_rand(10,99); $sitesHosted=number_format(mt_rand(1200,98000)); $responseMs=mt_rand(12,240);
+$statusLine=pick($statusLines); $statusDc=pick($locations); $statusTagline=pick($taglines);
+// Phase B - PAGE CONTENT (seed 'page|<host>|<path>'): everything
+// specific to this one URL is generated under this seed below, so
+// a page is stable across fetches but differs across URLs.
+srand2('page|'.$host.'|'.$requestPath);
+$category=pick($categories);
 $title=$brand.' - '.ucwords($topic);
 $heading=ucwords(pick($adjectives)).' '.$topic.' with '.$brand;
 $myFeatures=picks($features,8); $myTags=picks($tags,14); $myKeywords=array_merge(picks($keywordsExtra,8), $myTags, [$topic,$brand.' hosting', $currentName]);
@@ -607,9 +695,13 @@ $paragraphs=["$brand makes $topic simple. Our ".pick($nouns)." is built for peop
 $paragraphs=picks($paragraphs,count($paragraphs));
 $paragraphs=array_map('dedupeWords',$paragraphs);
 
-$author=pick($authors); $pubAge=random_int(2,900)*86400+random_int(0,86399); $publishedTs=$nowTs-$pubAge; $updatedTs=$publishedTs+random_int(3600,max(7200,$pubAge-3600)); if($updatedTs>$nowTs) $updatedTs=$nowTs;
+$author=pick($authors); $pubAge=mt_rand(2,900)*86400+mt_rand(0,86399);
+// Dates anchor to a FIXED point, not time(): a published date derived
+// from $nowTs would drift by seconds on every fetch and break page
+// stability even with a seeded offset.
+$pageAnchorTs=strtotime('2026-11-01 00:00:00 UTC'); $publishedTs=$pageAnchorTs-$pubAge; $updatedTs=$publishedTs+mt_rand(3600,max(7200,$pubAge-3600)); if($updatedTs>$pageAnchorTs) $updatedTs=$pageAnchorTs;
 $published=date('F j, Y',$publishedTs); $updated=date('F j, Y',$updatedTs); $publishedIso=date('c',$publishedTs); $updatedIso=date('c',$updatedTs);
-$readMinutes=random_int(4,18); $commentCount=random_int(0,89); $viewCount=number_format(random_int(180,98000)); $rating=(random_int(38,50)/10); $reviewCount=random_int(120,4800);
+$readMinutes=mt_rand(4,18); $commentCount=mt_rand(0,89); $viewCount=number_format(mt_rand(180,98000)); $rating=(mt_rand(38,50)/10); $reviewCount=mt_rand(120,4800);
 // Footer Ref is derived from host+path, so the same URL shows the same
 // Ref on every load (audit B10) instead of re-rolling per request.
 $pageRef=substr(md5($host.'|'.$requestPath),0,18);
@@ -631,7 +723,7 @@ $links=uniqueLinks(80,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$u
 // Explore list ($links) ONLY: footer Sitemap labels, the hash
 // copyright link and all other lists keep their existing rules.
 $exploreOldPrefix=titleWords(explode('.',$linkDomain)[0]); $explorePrefixes=[];
-foreach($links as &$exploreLink){ $explorePt=pathTitle($exploreLink['path']); $explorePrefix=''; $exploreTries=0; while($exploreTries<200){ $exploreTries++; $exploreW=pick($subWords); if(random_int(0,2)===0) $exploreW.='-'.pick($subWords); $exploreCand=titleWords($exploreW); if($exploreCand===$exploreOldPrefix || isset($explorePrefixes[$exploreCand])) continue; $explorePrefix=$exploreCand; break; } if($explorePrefix==='') $explorePrefix=titleWords(pick($subWords)).' '.random_int(2000,3000); $explorePrefixes[$explorePrefix]=true; $exploreLink['label']=dedupeWords($explorePrefix.($explorePt!==''?' '.$explorePt:'')); }
+foreach($links as &$exploreLink){ $explorePt=pathTitle($exploreLink['path']); $explorePrefix=''; $exploreTries=0; while($exploreTries<200){ $exploreTries++; $exploreW=pick($subWords); if(mt_rand(0,2)===0) $exploreW.='-'.pick($subWords); $exploreCand=titleWords($exploreW); if($exploreCand===$exploreOldPrefix || isset($explorePrefixes[$exploreCand])) continue; $explorePrefix=$exploreCand; break; } if($explorePrefix==='') $explorePrefix=titleWords(pick($subWords)).' '.mt_rand(2000,3000); $explorePrefixes[$explorePrefix]=true; $exploreLink['label']=dedupeWords($explorePrefix.($explorePt!==''?' '.$explorePt:'')); }
 unset($exploreLink);
 $extraLinks=uniqueLinks(18,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain);
 $relatedLinks=uniqueLinks(6,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain);
@@ -648,7 +740,7 @@ $relatedLinks=uniqueLinks(6,$scheme,$baseDomain,$port,$subWords,$sections,$docPa
 // de-duplicated across the 6 cards and never equal to the old fixed
 // prefix. The path-derived part of the label is kept as-is.
 $relatedOldPrefix=titleWords(explode('.',$linkDomain)[0]); $relatedPrefixes=[];
-foreach($relatedLinks as &$relatedLink){ $relatedPt=pathTitle($relatedLink['path']); $relatedPrefix=''; $relatedTries=0; while($relatedTries<200){ $relatedTries++; $relatedW=pick($subWords); if(random_int(0,2)===0) $relatedW.='-'.pick($subWords); $relatedCand=titleWords($relatedW); if($relatedCand===$relatedOldPrefix || isset($relatedPrefixes[$relatedCand])) continue; $relatedPrefix=$relatedCand; break; } if($relatedPrefix==='') $relatedPrefix=titleWords(pick($subWords)).' '.random_int(2000,3000); $relatedPrefixes[$relatedPrefix]=true; $relatedLink['label']=dedupeWords($relatedPrefix.($relatedPt!==''?' '.$relatedPt:'')); }
+foreach($relatedLinks as &$relatedLink){ $relatedPt=pathTitle($relatedLink['path']); $relatedPrefix=''; $relatedTries=0; while($relatedTries<200){ $relatedTries++; $relatedW=pick($subWords); if(mt_rand(0,2)===0) $relatedW.='-'.pick($subWords); $relatedCand=titleWords($relatedW); if($relatedCand===$relatedOldPrefix || isset($relatedPrefixes[$relatedCand])) continue; $relatedPrefix=$relatedCand; break; } if($relatedPrefix==='') $relatedPrefix=titleWords(pick($subWords)).' '.mt_rand(2000,3000); $relatedPrefixes[$relatedPrefix]=true; $relatedLink['label']=dedupeWords($relatedPrefix.($relatedPt!==''?' '.$relatedPt:'')); }
 unset($relatedLink);
 $footerLinks=uniqueLinks(40,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain);
 $navLinks=uniqueLinks(8,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain);
@@ -684,16 +776,25 @@ while(count($footerSitemapLinks)<40 && $footerTries<800){ $footerTries++; $c=bui
 // path (buildUrl). ALL other links keep their existing rules:
 // page links follow the per-visitor maze_link cookie domain, and
 // footer Sitemap links stay on dictionary-word subdomains.
-function makeHashLabel(): string { $len=random_int(6,7); $hyphPos=(random_int(0,1)===0)?random_int(2,$len-3):-1; $chars='abcdefghijklmnopqrstuvwxyz0123456789'; $out=''; $hasLetter=false; $hasDigit=false; for($i=0;$i<$len;$i++){ if($i===$hyphPos){ $out.='-'; continue; } $ch=$chars[random_int(0,strlen($chars)-1)]; if(ctype_alpha($ch)) $hasLetter=true; else $hasDigit=true; $out.=$ch; } if(!$hasLetter||!$hasDigit){ return makeHashLabel(); } return $out; }
+function makeHashLabel(): string { $len=mt_rand(6,7); $hyphPos=(mt_rand(0,1)===0)?mt_rand(2,$len-3):-1; $chars='abcdefghijklmnopqrstuvwxyz0123456789'; $out=''; $hasLetter=false; $hasDigit=false; for($i=0;$i<$len;$i++){ if($i===$hyphPos){ $out.='-'; continue; } $ch=$chars[mt_rand(0,strlen($chars)-1)]; if(ctype_alpha($ch)) $hasLetter=true; else $hasDigit=true; $out.=$ch; } if(!$hasLetter||!$hasDigit){ return makeHashLabel(); } return $out; }
 $hashLink=null; $hashTries=0;
 while($hashLink===null && $hashTries<100){ $hashTries++; $hashHost=makeHashLabel().'.'.$baseDomain; if($hashHost===$linkDomain || $hashHost===$host || isset($footerHosts[$hashHost])) continue; $hc=buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$hashHost); if(isset($used[$hc['url']])) continue; $used[$hc['url']]=true; $hashLink=$hc; }
 if($hashLink===null){ $hashLink=['url'=>$canonical,'label'=>$brand,'path'=>$requestPath,'section'=>'']; }
 
 
-$planName=pick($planNames);
-$plans=[]; $ladderCents=random_int(199,999); foreach(picks($planNames,3) as $pn){ $plans[]=['name'=>$pn,'price'=>number_format($ladderCents/100,2),'feats'=>picks($features,4)]; $ladderCents+=random_int(200,1500); }
-$planPrice=$plans[0]['price'];
-$includedPlan=$plans[1]['name'];
+// (The pricing ladder itself is a host trait - see Phase A above.)
+// Phase B extras consumed by the template, precomputed here so the
+// template itself contains NO random calls at all: testimonial star
+// counts, per-card related topics, tag -> extra-link indexes, the
+// "Inside" section picks, the aside picks, and the seeded section
+// order (stable per URL, varied across URLs - audit B2 noted the
+// order had become fixed).
+$myTestStars=[]; foreach($myTestimonials as $t){ $myTestStars[]=mt_rand(4,5); }
+$relatedTopics=[]; foreach($relatedLinks as $rl){ $relatedTopics[]=pick($blogTopics); }
+$tagLinkIdx=[]; for($ti=0;$ti<count($myTags);$ti++){ $tagLinkIdx[]=mt_rand(0,count($extraLinks)-1); }
+$insideTagline=pick($taglines); $insideFeatures=picks($features,5); $insideLocations=picks($locations,3);
+$asideTopic=pick($blogTopics); $asideDoc=pick($docPages); $asideSection=pick($sections);
+$sectionOrder=rshuffle(['features','pricing','inside','faq','testimonials','glossary','related','explore','tags','status']);
 
 // wordCount counts the words actually rendered in the body (paragraphs,
 // FAQs, testimonials, glossary) instead of a random 900-3200 (audit B11).
@@ -711,7 +812,7 @@ $wordCount=str_word_count(strip_tags($bodyWords));
 $ldGraph=[
  ['@type'=>'Organization','name'=>$brand,'url'=>$canonical],
  ['@type'=>'WebSite','name'=>$brand,'url'=>$canonical],
- ['@type'=>'WebPage','name'=>$title,'description'=>$description,'url'=>$canonical,'inLanguage'=>'en','datePublished'=>$publishedIso,'dateModified'=>$updatedIso],
+ $isHome ? ['@type'=>'WebPage','name'=>$title,'description'=>$description,'url'=>$canonical,'inLanguage'=>'en'] : ['@type'=>'WebPage','name'=>$title,'description'=>$description,'url'=>$canonical,'inLanguage'=>'en','datePublished'=>$publishedIso,'dateModified'=>$updatedIso],
 ];
 // Homepage is a website, not an article: only non-home pages get the
 // BlogPosting node in their structured data.
@@ -722,10 +823,8 @@ $ld=['@context'=>'https://schema.org','@graph'=>array_merge($ldGraph,[
  ['@type'=>'ItemList','name'=>'Explore '.$brand,'itemListElement'=>array_map(fn($i,$l)=>['@type'=>'ListItem','position'=>$i+1,'name'=>$l['label'],'url'=>$l['url']],array_keys(array_slice($links,0,12)),array_slice($links,0,12))],
 ])];
 $ldJson=json_encode($ld, JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
-$geoPlace=$geoPlaces[random_int(0,count($geoPlaces)-1)];
-// Accent colour varies per page from a small palette so the inline
-// <style> block is not byte-identical across pages/brands (audit A4).
-$accent=pick(['#38bdf8','#34d399','#fbbf24','#f472b6','#a78bfa','#fb923c']);
+// Geo place is a host trait - picked in Phase A above.
+// Accent colour is a host trait - picked in Phase A above (audit A4).
 
 // Response headers: never cache (every load must be a fresh page) and a
 // Link header pointing at the canonical URL.
@@ -772,27 +871,21 @@ header('Link: <'.$canonical.'>; rel="canonical"');
 <h2>On this page</h2><ul><?php foreach([['features','Key features'],['pricing','Pricing plans'],['faq','Frequently asked questions'],['testimonials','What customers say'],['glossary','Glossary'],['status','Service status']] as $otp): ?><li><a href="#<?=e($otp[0])?>"><?=e($otp[1])?> - <?=e($topic)?></a></li><?php endforeach; ?></ul>
 <?php foreach(array_slice($paragraphs,3) as $p): ?><p><?=e($p)?></p><?php endforeach; ?>
 
-<section id="features"><h2>Key features of <?=e($brand)?> <?=e($topic)?></h2><ul><?php foreach($myFeatures as $f): ?><li><?=e(ucfirst($f))?> - included with <?=e($includedPlan)?> plans and above</li><?php endforeach; ?></ul></section>
-
-<section id="pricing"><h2>Pricing plans compared</h2><table><tr><th>Plan</th><th>Price / month</th><th>Includes</th></tr><?php foreach($plans as $pl): ?><tr><td><?=e($pl['name'])?></td><td>$<?=e($pl['price'])?></td><td><?=e(implode(', ',$pl['feats']))?></td></tr><?php endforeach; ?></table></section>
-
-<section><h2>Inside <?=e($brand)?></h2><p><?=e(pick($taglines))?> Explore <?=e(implode(", ", picks($features,5)))?> in <?=e(implode(", ", picks($locations,3)))?>.</p></section>
-
-<section id="faq"><h2>Frequently asked questions about <?=e($topic)?></h2><?php foreach($myFaqs as $f): ?><h3><?=e($f[0])?></h3><p><?=e($f[1])?></p><?php endforeach; ?></section>
-
-<section id="testimonials"><h2>What customers say about <?=e($brand)?></h2><?php foreach($myTestimonials as $t): ?><div class="box"><p>&ldquo;<?=e($t[0])?>&rdquo;</p><p><?=e($t[1])?> &middot; <?=str_repeat('&#9733;',random_int(4,5))?></p></div><?php endforeach; ?></section>
-
-<section id="glossary"><h2>Glossary</h2><?php foreach($myGlossary as $g): ?><h3><?=e($g[0])?></h3><p><?=e($g[1])?></p><?php endforeach; ?></section>
-
-<section><h2>Related articles and guides</h2><div class="cards"><?php foreach($relatedLinks as $i=>$l): ?><div class="card"><div><h3><a href="<?=e($l['url'])?>"><?=e($l['label'])?></a></h3><p><?=e(pick($blogTopics))?> - <?=e($readMinutes)?> min read, updated <?=e($updated)?></p></div></div><?php endforeach; ?></div></section>
-
-<section><h2>Explore <?=e($brand)?> - all sections</h2><ul class="links"><?php foreach($links as $l): ?><li><a href="<?=e($l['url'])?>"><?=e($l['label'])?></a></li><?php endforeach; ?></ul></section>
-
-<section><h2>Tags and topics</h2><div class="tags"><?php foreach($myTags as $t): $tl=$extraLinks[random_int(0,count($extraLinks)-1)]; ?><a href="<?=e($tl['url'])?>" rel="tag"><?=e($t)?></a><?php endforeach; ?></div></section>
-
-<section id="status"><h2>Service status and numbers</h2><p><?=e(pick($statusLines))?>. Uptime 98.<?=random_int(10,99)?>% &middot; <?=number_format(random_int(1200,98000))?> sites hosted &middot; Nearest data centre: <?=e(pick($locations))?> &middot; Response time: <?=random_int(12,240)?> ms &middot; Tagline: <?=e(pick($taglines))?></p></section>
+<?php foreach($sectionOrder as $secKey): ?>
+<?php if($secKey==='features'): ?><section id="features"><h2>Key features of <?=e($brand)?> <?=e($topic)?></h2><ul><?php foreach($myFeatures as $f): ?><li><?=e(ucfirst($f))?> - included with <?=e($includedPlan)?> plans and above</li><?php endforeach; ?></ul></section>
+<?php elseif($secKey==='pricing'): ?><section id="pricing"><h2>Pricing plans compared</h2><table><tr><th>Plan</th><th>Price / month</th><th>Includes</th></tr><?php foreach($plans as $pl): ?><tr><td><?=e($pl['name'])?></td><td>$<?=e($pl['price'])?></td><td><?=e(implode(', ',$pl['feats']))?></td></tr><?php endforeach; ?></table></section>
+<?php elseif($secKey==='inside'): ?><section><h2>Inside <?=e($brand)?></h2><p><?=e($insideTagline)?> Explore <?=e(implode(", ", $insideFeatures))?> in <?=e(implode(", ", $insideLocations))?>.</p></section>
+<?php elseif($secKey==='faq'): ?><section id="faq"><h2>Frequently asked questions about <?=e($topic)?></h2><?php foreach($myFaqs as $f): ?><h3><?=e($f[0])?></h3><p><?=e($f[1])?></p><?php endforeach; ?></section>
+<?php elseif($secKey==='testimonials'): ?><section id="testimonials"><h2>What customers say about <?=e($brand)?></h2><?php foreach($myTestimonials as $ti2=>$t): ?><div class="box"><p>&ldquo;<?=e($t[0])?>&rdquo;</p><p><?=e($t[1])?> &middot; <?=str_repeat('&#9733;',$myTestStars[$ti2])?></p></div><?php endforeach; ?></section>
+<?php elseif($secKey==='glossary'): ?><section id="glossary"><h2>Glossary</h2><?php foreach($myGlossary as $g): ?><h3><?=e($g[0])?></h3><p><?=e($g[1])?></p><?php endforeach; ?></section>
+<?php elseif($secKey==='related'): ?><section><h2>Related articles and guides</h2><div class="cards"><?php foreach($relatedLinks as $i=>$l): ?><div class="card"><div><h3><a href="<?=e($l['url'])?>"><?=e($l['label'])?></a></h3><p><?=e($relatedTopics[$i])?> - <?php if(!$isHome): ?><?=e($readMinutes)?> min read, <?php endif; ?>updated <?=e($updated)?></p></div></div><?php endforeach; ?></div></section>
+<?php elseif($secKey==='explore'): ?><section><h2>Explore <?=e($brand)?> - all sections</h2><ul class="links"><?php foreach($links as $l): ?><li><a href="<?=e($l['url'])?>"><?=e($l['label'])?></a></li><?php endforeach; ?></ul></section>
+<?php elseif($secKey==='tags'): ?><section><h2>Tags and topics</h2><div class="tags"><?php foreach($myTags as $ti=>$t): $tl=$extraLinks[$tagLinkIdx[$ti]]; ?><a href="<?=e($tl['url'])?>" rel="tag"><?=e($t)?></a><?php endforeach; ?></div></section>
+<?php elseif($secKey==='status'): ?><section id="status"><h2>Service status and numbers</h2><p><?=e($statusLine)?>. Uptime <?=e($uptimeStr)?>% &middot; <?=e($sitesHosted)?> sites hosted &middot; Nearest data centre: <?=e($statusDc)?> &middot; Response time: <?=e((string)$responseMs)?> ms &middot; Tagline: <?=e($statusTagline)?></p></section>
+<?php endif; ?>
+<?php endforeach; ?>
 <?php if(!$isHome): ?></article><?php endif; ?></main>
-<aside><h2>Popular guides</h2><p>Read our guide to <?=e(pick($blogTopics))?>, learn about <?=e(pick($docPages))?>, or browse the <?=e(pick($sections))?> section.</p><h2>Comments (<?=e((string)$commentCount)?>)</h2><p>Join the discussion. Last activity <?=e($updated)?>.</p></aside>
+<aside><h2>Popular guides</h2><p>Read our guide to <?=e($asideTopic)?>, learn about <?=e($asideDoc)?>, or browse the <?=e($asideSection)?> section.</p><h2>Comments</h2><p>Join the discussion. Last activity <?=e($updated)?>.</p></aside>
 <?php /* Honeypot payoff: after a form submission, show the green "Login successful" popup (auto-hides after 5s). The matching maze_session cookie was already set in SECTION 6. */ ?>
 <?php if (!empty($loginSuccess)): ?><div id="hploginok" role="alert" style="position:fixed;top:16px;right:16px;background:#1a7f37;color:#fff;padding:12px 18px;border-radius:8px;z-index:9999;font-family:sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.3)">Login successful</div><script>setTimeout(function(){var e=document.getElementById('hploginok');if(e){e.style.display='none';}},5000);</script><?php endif; ?>
 <?php /* The hidden honeypot login form: positioned far off-screen, never shown to humans. Fields are ONLY Login email, Login username and Login password - exactly what a login form asks for (the old version also carried Website / Full name / Message fields, which no login form has - audit B8). Rendered only when the group is under 5 submissions AND the visitor sent no maze_session cookie. */ ?>
