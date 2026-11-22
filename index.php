@@ -415,57 +415,72 @@ if (str_ends_with($requestPath, 'sitemap.xml')) {
 // dates and numbers; build ~160 unique maze links (nav, body, cards, tags,
 // footer). Every link path ends in a random number 2000-3000 (the "sugar")
 // so each URL looks like a distinct article.
-// TIMED DOMAIN SHIFT (branch timed-domain-shift): page links no longer
-// each point at a different random sibling subdomain. ALL page links use
-// ONE tracked link domain at a time - at first the host being visited.
-// The tracker can only change every 5 seconds, and when it does, the
-// next arrival's OWN domain replaces it. The current domain and
-// when it last changed live in ONE single tracker file,
-// .maze-domain.json, kept separate from the daily logs in logs/.
+// TIMED DOMAIN SHIFT (branch timed-domain-shift, PER-VISITOR version,
+// Nishad 2026-11-22 ~03:40 EST, supersedes the global-tracker version):
+// page links no longer each point at a different random sibling
+// subdomain. ALL page links for a visitor use ONE link domain at a
+// time, and that domain lives ONLY in that visitor's own cookie
+// (maze_link) - there is no global tracker file any more, so one
+// visitor's domain/timing never impacts anyone else.
+//   - No valid maze_link cookie: the domain being visited right now
+//     becomes the link domain; a cookie storing THAT domain + the
+//     current timestamp is set, and all links point to that domain.
+//   - Cookie younger than 5 seconds: all links use the domain stored
+//     in the cookie, unchanged.
+//   - Cookie 5+ seconds old: ONE new random subdomain is generated,
+//     the visitor's cookie is updated to it + a fresh timestamp, and
+//     all links point to the new domain for the next 5 seconds.
+// The cookie is set with Domain=.<base domain> (e.g. .nishad.top) on
+// purpose: a host-only cookie set on abc.nishad.top would never be
+// sent after following a link to a different subdomain, which would
+// break the session exactly when the domain hops. This cookie is
+// separate from maze_visit (first-seen group, for logging/banning)
+// and from maze_session (honeypot) - neither of those is touched.
 // ---------------------------------------------------------------------------
 $canonical=$scheme.'://'.$host.$port.$requestPath;
 
-// Timed domain tracker: read/decide/write under one exclusive flock() so
-// simultaneous visitors can never conflict - whoever locks first after
-// the 5-second window sets the new domain, everyone else in that window
-// reads and uses the same tracked domain. Tracker shape:
-// {"domain":"<host>","updated_at":<unix ts>}
-$domainTrackerFile = __DIR__ . '/.maze-domain.json';
+// Per-visitor link-domain session cookie. Value shape:
+// "<link domain>__<unix timestamp>". Both parts are validated before
+// being trusted: the domain must be the base domain itself or a
+// subdomain of it and match a plain hostname shape, and the timestamp
+// must be a positive integer not in the future. Anything invalid
+// falls back to the current host + a fresh cookie.
 $linkDomain = $host;
-$domainTf = @fopen($domainTrackerFile, 'c+');
-if ($domainTf) {
-    if (flock($domainTf, LOCK_EX)) {
-        $draw = stream_get_contents($domainTf);
-        $dstate = $draw ? json_decode($draw, true) : null;
-        $trackedDomain = is_array($dstate) ? (string)($dstate['domain'] ?? '') : '';
-        $trackedAt = is_array($dstate) ? (int)($dstate['updated_at'] ?? 0) : 0;
-        $trackedValid = $trackedDomain !== '' && ($trackedDomain === $baseDomain || str_ends_with($trackedDomain, '.' . $baseDomain));
-        $changed = false;
-        if (!$trackedValid) {
-            // First run (or a corrupt tracker): the domain being visited
-            // becomes the current link domain.
-            $linkDomain = $host; $trackedAt = $nowTs; $changed = true;
-        } elseif ($nowTs - $trackedAt >= 5) {
-            // Window expired: the NEW arrival's own domain replaces the
-            // tracker. Whoever shows up first after the 5 seconds sets
-            // the domain everyone sees until the next window passes -
-            // a late arrival never sees the old domain.
-            $linkDomain = $host; $trackedAt = $nowTs; $changed = true;
-        } else {
-            $linkDomain = $trackedDomain;
-        }
-        if ($changed) {
-            rewind($domainTf); ftruncate($domainTf, 0);
-            fwrite($domainTf, json_encode(['domain' => $linkDomain, 'updated_at' => $trackedAt]));
-            fflush($domainTf);
-        }
-        flock($domainTf, LOCK_UN);
+$linkCookieOpts = ['expires' => $nowTs + 2592000, 'path' => '/'];
+if (str_contains($baseDomain, '.')) $linkCookieOpts['domain'] = '.' . $baseDomain;
+$rawLinkCookie = (string)($_COOKIE['maze_link'] ?? '');
+$cookieLinkDomain = ''; $cookieLinkTs = 0;
+if ($rawLinkCookie !== '' && str_contains($rawLinkCookie, '__')) {
+    [$cld, $clt] = explode('__', $rawLinkCookie, 2);
+    $cld = strtolower(trim($cld));
+    $cldValid = ($cld === $baseDomain || str_ends_with($cld, '.' . $baseDomain))
+        && preg_match('/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/', $cld);
+    if ($cldValid && preg_match('/^\d{1,12}$/', trim($clt))) {
+        $tsCand = (int)trim($clt);
+        if ($tsCand > 0 && $tsCand <= $nowTs) { $cookieLinkDomain = $cld; $cookieLinkTs = $tsCand; }
     }
-    fclose($domainTf);
+}
+if ($cookieLinkDomain === '') {
+    // No (valid) session: the domain being visited right now is the
+    // link domain, stored in a fresh cookie with the current time.
+    $linkDomain = $host;
+    setcookie('maze_link', $linkDomain . '__' . $nowTs, $linkCookieOpts);
+} elseif ($nowTs - $cookieLinkTs >= 5) {
+    // This visitor's 5 seconds are up: generate ONE new random
+    // subdomain (same word style buildUrl() uses for siblings),
+    // update ONLY this visitor's cookie to it + a fresh timestamp,
+    // and point all their links at it for the next 5 seconds.
+    $w = pick($subWords); if (random_int(0, 2) === 0) $w .= '-' . pick($subWords);
+    $linkDomain = $w . '.' . $baseDomain;
+    setcookie('maze_link', $linkDomain . '__' . $nowTs, $linkCookieOpts);
+} else {
+    // Inside this visitor's 5-second window: links stay on the
+    // domain stored in their cookie; the cookie is left as-is.
+    $linkDomain = $cookieLinkDomain;
 }
 
 // Build one maze URL: section + optional doc page + trailing random
-// number, on the tracked link domain when one is given (label comes from
+// number, on the visitor's cookie link domain when one is given (label comes from
 // that domain's first label), otherwise on a random sibling subdomain
 // (the sitemap builder uses this and then overrides the host anyway).
 // Returns label, full URL, path, section.

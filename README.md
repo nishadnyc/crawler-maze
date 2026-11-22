@@ -16,29 +16,42 @@ in the code.
 
 ## Branch: timed-domain-shift — timed domain rotation (EXPERIMENT, not on main)
 
-- **All page links use ONE tracked link domain at a time** instead of each
-  link pointing at a different random sibling subdomain.
-- **First domain = the host being visited** (e.g. landing on
-  `abc.nishad.top` serves a page whose links all stay on `abc.nishad.top`).
-- **Rotation every 5 seconds**: a single tracker file,
-  `public_html/.maze-domain.json`, holds `{"domain": ..., "updated_at": ...}`
-  — the current link domain and when it last changed. On each page load the
-  script reads it under an exclusive `flock()`; if 5+ seconds have passed
-  since the tracker last changed, the NEW arrival's own domain replaces
-  the tracker — whoever shows up first after the window sets the domain
-  everyone sees until the next window passes, and a late arrival (even an
-  hour later) never sees the old domain. Simultaneous visitors cannot
-  conflict: the lock makes one request the decider, everyone else in the
-  window reads the same tracked domain.
-- **Separate from the logs by design**: the tracker is its own tiny global
-  file next to `index.php` (same pattern as `.maze-bans.json`, and equally
-  web-blocked by the root `.htaccess`), never inside `logs/` and never
-  mixed into the per-subnet daily log files.
-- **Unchanged**: robots.txt / sitemap.xml still list only the current host;
-  canonical/OG URLs still use the visited host; ban, cookie, honeypot and
-  logging behaviour are untouched. Paths still end in the 2000–3000 sugar.
-- This branch is **not deployed live** and `main` remains the stable,
-  live-matching branch until Nishad decides otherwise.
+**Per-visitor version (Nishad, 2026-11-22 ~03:40 EST)** — this supersedes
+the earlier global-tracker version on this branch. There is **no global
+tracker file any more** (`.maze-domain.json` is no longer read or written
+for link domains); each visitor carries their own link domain in their
+own cookie, so one visitor's timing/domain never impacts anyone else.
+
+- **All page links for a visitor use ONE link domain at a time** instead
+  of each link pointing at a different random sibling subdomain.
+- **No session cookie → the host being visited**: if the visitor presents
+  no valid `maze_link` cookie, the domain they are actually visiting
+  right now (e.g. landing on `abc.nishad.top`) becomes their link
+  domain. A cookie storing **that domain + the current timestamp** is
+  set, and all links on the page point only to that domain.
+- **Cookie younger than 5 seconds**: all links use the domain stored in
+  the cookie, unchanged.
+- **Cookie 5+ seconds old**: ONE new random `*.nishad.top` subdomain is
+  generated (same word style as the other maze subdomains), that
+  visitor's cookie is updated to the new domain + a fresh timestamp, and
+  all their links point to the new domain for the next 5 seconds.
+- **Cookie scope is the whole point**: the cookie is set with
+  `Domain=.nishad.top`, because a host-only cookie set on
+  `abc.nishad.top` would never be sent after following a link to a
+  different subdomain. Cookie value shape: `<domain>__<unix timestamp>`;
+  both parts are validated (domain must be the base domain or a
+  subdomain of it in plain hostname shape; timestamp a positive integer
+  not in the future) and anything invalid falls back to the current
+  host + a fresh cookie.
+- **Separate cookies, separate jobs**: `maze_link` (link domain, this
+  feature) is distinct from `maze_visit` (first-seen group, for
+  logging/banning) and `maze_session` (honeypot) — those are untouched.
+  Nothing about the link domain is mixed into the per-subnet daily logs.
+- **Unchanged**: robots.txt / sitemap.xml still list only the current host
+  (the sitemap builds random-host URLs then overrides them to the
+  visited host, as before); canonical/OG URLs still use the visited
+  host; ban, honeypot and logging behaviour are untouched. Paths still
+  end in the 2000–3000 sugar.
 
 ## Latest changes — 2026-11-22 (5-second hold for banned visitors)
 
@@ -202,9 +215,9 @@ Access from Cleo's VM (direct SSH is blocked):
    footer 40, plus the main CTA). **Every link path ends in a random number
    2000–3000** (the "sugar") so each URL looks like a distinct article. On
    `main`, links point at random **sibling subdomains**; on the
-   `timed-domain-shift` branch, all links use the ONE tracked domain from
-   `.maze-domain.json` (see the branch note at the top), rotating every
-   5 seconds. Either way, following them stays in the maze. Full SEO bait: meta/OG/Twitter tags, canonical + hreflang, and a
+   `timed-domain-shift` branch, all links use the ONE per-visitor link
+   domain from the visitor's `maze_link` cookie (see the branch note at
+   the top), rotating every 5 seconds per visitor. Either way, following them stays in the maze. Full SEO bait: meta/OG/Twitter tags, canonical + hreflang, and a
    JSON-LD graph (Organization, WebSite, WebPage, BlogPosting, BreadcrumbList,
    FAQPage, Product+rating, ItemList). Headers forbid caching — every load is
    a fresh page.
@@ -303,6 +316,7 @@ information only and never group or ban anyone).
 | Ban length | 600 s (10 min), 429 + `Retry-After` |
 | Ban hold | `sleep(5)` after logging, before the 429 — both ban paths, per-request only |
 | Visit cookie | `maze_visit`, 30 days, path `/`, value = first-seen group + token |
+| Link-domain cookie (branch) | `maze_link`, 30 days, path `/`, `Domain=.nishad.top`, value = `<link domain>__<unix ts>`; <5 s old = links stay on its domain, 5+ s old = new random domain + fresh ts in a new cookie |
 | Idle pruning | entries idle ≥ 7200 s dropped from today's log |
 | Honeypot logging | first 5 submissions per group per day |
 | Logged field trim | 120 chars per field |
