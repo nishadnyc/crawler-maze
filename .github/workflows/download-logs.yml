@@ -26,7 +26,7 @@ jobs:
       - name: Download files via SCP
         run: |
           mkdir -p ./public_html
-          scp -r "${{ vars.SERVER_USER }}@${{ vars.SERVER_HOST }}:${{ vars.SERVER_PATH }}/." ./public_html/
+          scp -O -r "${{ vars.SERVER_USER }}@${{ vars.SERVER_HOST }}:${{ vars.SERVER_PATH }}/." ./public_html/
 
       - name: Commit and push changes
         run: |
