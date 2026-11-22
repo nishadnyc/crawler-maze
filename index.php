@@ -414,15 +414,60 @@ if (str_ends_with($requestPath, 'sitemap.xml')) {
 // Pick this page's brand, topic, heading, features, FAQs, testimonials,
 // dates and numbers; build ~160 unique maze links (nav, body, cards, tags,
 // footer). Every link path ends in a random number 2000-3000 (the "sugar")
-// so each URL looks like a distinct article. Links point at random SIBLING
-// subdomains - following them keeps the crawler inside the maze.
+// so each URL looks like a distinct article.
+// TIMED DOMAIN SHIFT (branch timed-domain-shift): page links no longer
+// each point at a different random sibling subdomain. ALL page links use
+// ONE tracked link domain at a time - at first the host being visited -
+// and that domain only changes every 5 seconds. The current domain and
+// when it last changed live in ONE single tracker file,
+// .maze-domain.json, kept separate from the daily logs in logs/.
 // ---------------------------------------------------------------------------
 $canonical=$scheme.'://'.$host.$port.$requestPath;
 
-// Build one maze URL: random subdomain word(s) + section + optional doc
-// page + trailing random number. Returns label, full URL, path, section.
-function buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages): array { $w=pick($subWords); if(random_int(0,2)===0) $w.='-'.pick($subWords); $s=pick($sections); $path='/'.$s; if(in_array($s,['docs','guides','tutorials','blog','knowledge-base'],true)&&random_int(0,1)) $path.='/'.pick($docPages); if(random_int(0,3)===0) $path.='/'.pick($docPages); $path.='/'.random_int(2000,3000); return ['label'=>ucwords(str_replace('-',' ',$w)),'url'=>$scheme.'://'.$w.'.'.$baseDomain.$port.$path,'path'=>$path,'section'=>$s]; }
-function uniqueLinks($n,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,&$used): array { $out=[];$tries=0; while(count($out)<$n&&$tries<$n*20){ $tries++; $c=buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages); if(isset($used[$c['url']])) continue; $used[$c['url']]=true; $out[]=$c; } return $out; }
+// Timed domain tracker: read/decide/write under one exclusive flock() so
+// simultaneous visitors can never conflict - whoever locks first after
+// the 5-second window sets the new domain, everyone else in that window
+// reads and uses the same tracked domain. Tracker shape:
+// {"domain":"<host>","updated_at":<unix ts>}
+$domainTrackerFile = __DIR__ . '/.maze-domain.json';
+$linkDomain = $host;
+$domainTf = @fopen($domainTrackerFile, 'c+');
+if ($domainTf) {
+    if (flock($domainTf, LOCK_EX)) {
+        $draw = stream_get_contents($domainTf);
+        $dstate = $draw ? json_decode($draw, true) : null;
+        $trackedDomain = is_array($dstate) ? (string)($dstate['domain'] ?? '') : '';
+        $trackedAt = is_array($dstate) ? (int)($dstate['updated_at'] ?? 0) : 0;
+        $trackedValid = $trackedDomain !== '' && ($trackedDomain === $baseDomain || str_ends_with($trackedDomain, '.' . $baseDomain));
+        $changed = false;
+        if (!$trackedValid) {
+            // First run (or a corrupt tracker): the domain being visited
+            // becomes the current link domain.
+            $linkDomain = $host; $trackedAt = $nowTs; $changed = true;
+        } elseif ($nowTs - $trackedAt >= 5) {
+            // Window expired: shift to ONE new fixed domain.
+            do { $w = pick($subWords); if (random_int(0, 2) === 0) $w .= '-' . pick($subWords); $newDomain = $w . '.' . $baseDomain; } while ($newDomain === $trackedDomain);
+            $linkDomain = $newDomain; $trackedAt = $nowTs; $changed = true;
+        } else {
+            $linkDomain = $trackedDomain;
+        }
+        if ($changed) {
+            rewind($domainTf); ftruncate($domainTf, 0);
+            fwrite($domainTf, json_encode(['domain' => $linkDomain, 'updated_at' => $trackedAt]));
+            fflush($domainTf);
+        }
+        flock($domainTf, LOCK_UN);
+    }
+    fclose($domainTf);
+}
+
+// Build one maze URL: section + optional doc page + trailing random
+// number, on the tracked link domain when one is given (label comes from
+// that domain's first label), otherwise on a random sibling subdomain
+// (the sitemap builder uses this and then overrides the host anyway).
+// Returns label, full URL, path, section.
+function buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$linkHost=null): array { if($linkHost!==null && $linkHost!==''){ $w=explode('.',$linkHost)[0]; $urlHost=$linkHost; } else { $w=pick($subWords); if(random_int(0,2)===0) $w.='-'.pick($subWords); $urlHost=$w.'.'.$baseDomain; } $s=pick($sections); $path='/'.$s; if(in_array($s,['docs','guides','tutorials','blog','knowledge-base'],true)&&random_int(0,1)) $path.='/'.pick($docPages); if(random_int(0,3)===0) $path.='/'.pick($docPages); $path.='/'.random_int(2000,3000); return ['label'=>ucwords(str_replace('-',' ',$w)),'url'=>$scheme.'://'.$urlHost.$port.$path,'path'=>$path,'section'=>$s]; }
+function uniqueLinks($n,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,&$used,$linkHost=null): array { $out=[];$tries=0; while(count($out)<$n&&$tries<$n*20){ $tries++; $c=buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$linkHost); if(isset($used[$c['url']])) continue; $used[$c['url']]=true; $out[]=$c; } return $out; }
 
 $brand=pick($brands); $topic=pick($topics); $category=pick($categories);
 $title='Welcome to '.$currentName.' - '.ucwords($topic).' | '.$brand.' '.ucwords(pick($topics));
@@ -439,12 +484,12 @@ $published=date('F j, Y',$publishedTs); $updated=date('F j, Y',$updatedTs); $pub
 $readMinutes=random_int(4,18); $commentCount=random_int(0,89); $viewCount=number_format(random_int(180,98000)); $rating=(random_int(42,50)/10); $reviewCount=random_int(120,4800);
 $pageRef=bin2hex(random_bytes(9));
 
-$used=[]; $mainLink=buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages); $used[$mainLink['url']]=true;
-$links=uniqueLinks(80,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used);
-$extraLinks=uniqueLinks(18,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used);
-$relatedLinks=uniqueLinks(6,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used);
-$footerLinks=uniqueLinks(40,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used);
-$navLinks=uniqueLinks(8,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used);
+$used=[]; $mainLink=buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$linkDomain); $used[$mainLink['url']]=true;
+$links=uniqueLinks(80,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain);
+$extraLinks=uniqueLinks(18,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain);
+$relatedLinks=uniqueLinks(6,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain);
+$footerLinks=uniqueLinks(40,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain);
+$navLinks=uniqueLinks(8,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain);
 
 
 $planName=pick($planNames); $planPrice=random_int(1,29).'.'.pick(['00','49','99','50']);

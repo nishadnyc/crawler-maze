@@ -14,6 +14,30 @@ in the code.
 
 ---
 
+## Branch: timed-domain-shift — timed domain rotation (EXPERIMENT, not on main)
+
+- **All page links use ONE tracked link domain at a time** instead of each
+  link pointing at a different random sibling subdomain.
+- **First domain = the host being visited** (e.g. landing on
+  `abc.nishad.top` serves a page whose links all stay on `abc.nishad.top`).
+- **Rotation every 5 seconds**: a single tracker file,
+  `public_html/.maze-domain.json`, holds `{"domain": ..., "updated_at": ...}`
+  — the current link domain and when it last changed. On each page load the
+  script reads it under an exclusive `flock()`; if 5+ seconds have passed,
+  the request that holds the lock picks ONE new fixed domain, writes it
+  back, and every page served in the new window links only to that domain.
+  Simultaneous visitors cannot conflict: the lock makes one request the
+  decider, everyone else reads the same tracked domain.
+- **Separate from the logs by design**: the tracker is its own tiny global
+  file next to `index.php` (same pattern as `.maze-bans.json`, and equally
+  web-blocked by the root `.htaccess`), never inside `logs/` and never
+  mixed into the per-subnet daily log files.
+- **Unchanged**: robots.txt / sitemap.xml still list only the current host;
+  canonical/OG URLs still use the visited host; ban, cookie, honeypot and
+  logging behaviour are untouched. Paths still end in the 2000–3000 sugar.
+- This branch is **not deployed live** and `main` remains the stable,
+  live-matching branch until Nishad decides otherwise.
+
 ## Latest changes — 2026-11-22 (5-second hold for banned visitors)
 
 - **Banned visitors now wait 5 seconds before the 429**: when a visitor is
@@ -174,9 +198,11 @@ Access from Cleo's VM (direct SSH is blocked):
    testimonials/dates/numbers for this load; ~160 unique links built by
    `buildUrl()`/`uniqueLinks()` (nav 8, body 80, extra/tag 18, related 6,
    footer 40, plus the main CTA). **Every link path ends in a random number
-   2000–3000** (the "sugar") so each URL looks like a distinct article, and
-   links point at random **sibling subdomains** so following them stays in
-   the maze. Full SEO bait: meta/OG/Twitter tags, canonical + hreflang, and a
+   2000–3000** (the "sugar") so each URL looks like a distinct article. On
+   `main`, links point at random **sibling subdomains**; on the
+   `timed-domain-shift` branch, all links use the ONE tracked domain from
+   `.maze-domain.json` (see the branch note at the top), rotating every
+   5 seconds. Either way, following them stays in the maze. Full SEO bait: meta/OG/Twitter tags, canonical + hreflang, and a
    JSON-LD graph (Organization, WebSite, WebPage, BlogPosting, BreadcrumbList,
    FAQPage, Product+rating, ItemList). Headers forbid caching — every load is
    a fresh page.
