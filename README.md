@@ -1,11 +1,8 @@
 # Crawler Maze — a maze for AI crawlers
 
-![The maze's log book, opened on its busiest visitor](docs/control-space.jpg)
+![One morning in the maze — what the logs say](docs/proof.png)
 
-*It works. This is one morning in the maze, from the maze's own log book:
-21,639 crawler hits served across 128 bot groups — and 14,042 of them from
-a single AI crawler on one IP address, which wandered in at breakfast and
-was still digging at lunchtime.*
+*It works — one morning in the maze, by the numbers, from the maze's own logs.*
 
 ## The idea
 
