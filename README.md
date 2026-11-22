@@ -10,18 +10,18 @@
 
 *What the logs say · Sunday, November 22, 2026 · counted from the maze's own logs.*
 
-**54,620** crawler hits served · **1,027** unique IPs · **298** subnet log files · **51,109** banned hits
+**54,783** crawler hits served · **1,031** unique IPs · **298** subnet log files · **51,689** banned hits
 
 | Crawler | Requests | Banned hits | IPs | What it was after |
 | --- | ---: | ---: | --- | --- |
-| ClaudeBot | 28,550 | 573 | 1 — all from `216.73.216.60` | Tutorials, Developer pages, robots.txt |
-| GPTBot | 1,187 | 49,552 | 250 | Newsroom, Marketplace, Services |
+| ClaudeBot | 28,707 | 573 | 1 — all from `216.73.216.60` | Tutorials, Developer pages, robots.txt |
+| GPTBot | 1,187 | 50,132 | 250 | Newsroom, Marketplace, Services |
 | OAI-SearchBot | 15,150 | 984 | 200 | robots.txt |
 | facebookexternalhit | 202 | 0 | 76 | robots.txt |
 | Fake old-Chrome scanner fleet | 3,628 | 0 | 61 | favicon.ico |
 | Credential hunters | 3,287 | 0 | 150 | Probing for /.env, firebase keys and similar files that don't exist here |
 
-**What they were looking for:** robots.txt **18,888** · Tutorials **4,309** · Developer pages **4,150** · API docs **2,833** · sitemap.xml **2,794** · Docs **2,723**
+**What they were looking for:** robots.txt **18,903** · Tutorials **4,335** · Developer pages **4,176** · API docs **2,833** · sitemap.xml **2,795** · Docs **2,740**
 
 Honeypot login form: **0 submissions** — nobody took that bait.
 
