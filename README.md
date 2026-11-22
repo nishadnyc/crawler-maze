@@ -14,13 +14,31 @@ in the code.
 
 ---
 
+## Latest changes — 2026-11-22 (cookie + first-seen group)
+
+- **Cookie probe**: every first-time visitor now gets a `maze_visit` cookie
+  (set at the very top of the script; the server stores nothing about it).
+  A short live capture proved ClaudeBot stores and returns cookies (one
+  token resent on 3 separate requests); GPTBot returned none in the window.
+- **First-seen group identity**: the cookie's value is the visitor's
+  **first-seen group** (its /16 subnet) plus a random token — no bot name.
+  Grouping, counting, the daily log file and bans now follow the group in
+  the cookie, so a bot returning from a rotated IP is treated as its
+  original group; its current subnet is logged under `alias_subnets`.
+  Bot/agent names are stats only and no longer group or ban anyone.
+- **Ban rule**: a visitor is blocked if their IP/subnet **or** the group in
+  their cookie is banned (keys: `ip:`, `subnet:<group>`, `group:<group>`).
+  Banned hits are still tracked in the group's daily file.
+- **Rate limit raised**: 200 → **2000** hits per 1-hour window (per IP or
+  per group) before the 10-minute ban — bots get more maze before the wall.
+
 ## Where things live
 
 | Thing | Path (on the Oracle host) |
 |---|---|
 | Script | `/var/lib/soltris-wings/volumes/64ebbbde-c8b1-4191-bc4b-954e090bd351/public_html/index.php` |
 | Inside container | `/home/container/public_html/index.php` (PHP binary: `/usr/bin/php83`) |
-| Daily logs | `public_html/logs/<subnet>_<YYYY-MM-DD>.json` (deny-all `.htaccess` in that folder) |
+| Daily logs | `public_html/logs/<group subnet>_<YYYY-MM-DD>.json` (deny-all `.htaccess` in that folder) |
 | Global ban file | `public_html/.maze-bans.json` |
 | Archived old tracker | `public_html/old-files/` (the original single-file `.maze-visitors.json`, kept for review) |
 | Backups | `public_html/index.php.bak-<label>-<timestamp>` beside the script |
@@ -107,23 +125,27 @@ Access from Cleo's VM (direct SSH is blocked):
    port, path. The current subdomain becomes the page's site name; the base
    domain (last two labels) is used to build links to sibling subdomains.
    Visitor identity: real IP (first `X-Forwarded-For` entry), user-agent, and
-   the **/16 subnet** (IPv6: /48) — crawlers rotate IPs inside a subnet, so the
-   subnet is the unit that gets counted and banned. Known crawlers are grouped
-   by **bot name** (`bot:GPTBot`, …); everything else by a hash of its exact
-   user-agent (`ua:<md5-12>`).
+   the **/16 subnet** (IPv6: /48) — crawlers rotate IPs inside a subnet. The
+   visitor's **group** is then resolved (see "First-seen group identity"
+   below): the group baked into their `maze_visit` cookie if they carry one,
+   otherwise today's subnet. The group — never the bot name — is the unit
+   that gets counted and banned. An agent key (`bot:<name>` for known
+   crawlers, else `ua:<md5-12>` of the exact user-agent) is still computed,
+   but only as a stats label inside the log file.
 5. **Ban check (§5)** — `.maze-bans.json` is read first (shared lock). If the
-   visitor's IP, subnet or agent key has an unexpired ban, the hit is counted
+   visitor's IP, group subnet or group key has an unexpired ban, the hit is counted
    against their group in today's log (`banned_hits`, `last_banned_hit`) and
    the answer is a bare **429 + Retry-After** — no page is generated. Ban
    length: **600 s (10 min)**, enforced inside PHP only (no firewall changes).
-6. **Daily per-subnet log (§6)** — one locked read/modify/write of
-   `logs/<subnet>_<date>.json` (date in **America/New_York**; a fresh file
-   starts each day, old days are kept). Everything for the hit happens in this
-   single pass — counters, group stats, honeypot, ban decisions — so the file
-   is never opened twice per hit. See "Log file format" below.
-   - Rate limit: **> 200 hits in the current 1-hour window** from the IP, the
-     subnet **or** the agent group → 10-minute ban for all three keys, merged
-     into `.maze-bans.json` (expired entries pruned), and this request gets 429.
+6. **Daily per-group log (§6)** — one locked read/modify/write of
+   `logs/<group subnet>_<date>.json` (date in **America/New_York**; a fresh
+   file starts each day, old days are kept). Everything for the hit happens in
+   this single pass — counters, group stats, honeypot, ban decisions — so the
+   file is never opened twice per hit. See "Log file format" below.
+   - Rate limit: **> 2000 hits in the current 1-hour window** from the IP
+     **or** the first-seen group → 10-minute ban for the IP and group keys,
+     merged into `.maze-bans.json` (expired entries pruned), and this request
+     gets 429.
    - Housekeeping: ips/agents/groups idle **2 hours** are dropped from today's
      file so it stays small.
 7. **robots.txt / sitemap.xml (§7)** — generated on the fly by the same script
@@ -176,12 +198,13 @@ Behaviour:
 - Bots that ignore cookies are still stopped by the 5-per-group rule; bots
   that keep cookies stop seeing the form after their first "login".
 
-## Log file format (`logs/<subnet>_<date>.json`)
+## Log file format (`logs/<group subnet>_<date>.json`)
 
 ```jsonc
 {
-  "subnet": "74.7.0.0/16", "first_seen": …, "last_seen": …,
-  "window_start": …, "count": 123,              // subnet hits in current hour window
+  "subnet": "74.7.0.0/16", "first_seen": …, "last_seen": …,   // the GROUP subnet (first-seen, from the cookie when carried)
+  "alias_subnets": { "52.1.0.0/16": 12 },       // other subnets this group arrived from, with hit counts
+  "window_start": …, "count": 123,              // group hits in current hour window
   "ips":    { "<ip>":        { "first_seen":…, "window_start":…, "count":…, "last_seen":…, "agent":"bot:GPTBot" } },
   "agents": { "bot:GPTBot":  { "first_seen":…, "window_start":…, "count":…, "last_seen":…, "user_agent":"…", "user_agents":["… up to 5 distinct …"] } },
   "groups": { "bot:GPTBot":  {
