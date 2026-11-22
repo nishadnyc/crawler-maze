@@ -1,4 +1,4 @@
-name: Pull Files from Docker Container
+name: Pull Files from Server
 
 on:
   workflow_dispatch:
@@ -8,35 +8,33 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     permissions:
-      contents: write # Required so GITHUB_TOKEN can push back to your repo
+      contents: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: main # Ensures you are explicitly on the main branch
+          ref: main
 
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/id_ed25519
+          printf '%s\n' "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "${{ vars.SERVER_HOST }}" >> ~/.ssh/known_hosts
 
-      - name: Stream files from Docker container
+      - name: Download files via SCP
         run: |
           mkdir -p ./public_html
-          ssh "${{ vars.SERVER_USER }}@${{ vars.SERVER_HOST }}" \
-            "docker cp ${{ vars.CONTAINER_NAME }}:/home/container/public_html/. -" \
-            | tar -xf - -C ./public_html
+          scp -r "${{ vars.SERVER_USER }}@${{ vars.SERVER_HOST }}:${{ vars.SERVER_PATH }}/." ./public_html/
 
       - name: Commit and push changes
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.email "41898282+github-actions[bot]@://github.com"
           git add ./public_html
           if ! git diff --staged --quiet; then
-            git commit -m "Sync public_html from container"
+            git commit -m "Sync public_html from server"
             git push origin main
           else
             echo "No changes to commit."
