@@ -10,18 +10,24 @@
 
 *What the logs say · Sunday, November 22, 2026 · counted from the maze's own logs.*
 
-**61,040** crawler hits served · **1,081** unique IPs · **317** subnet log files · **64,494** banned hits
+**63,259** crawler hits served · **1,461** unique IPs · **317** subnet log files · **65,240** banned hits
 
 | Crawler | Requests | Banned hits | IPs | What it was after |
 | --- | ---: | ---: | --- | --- |
-| ClaudeBot | 31,767 | 668 | 1 — all from `216.73.216.60` | Tutorials, Developer pages, robots.txt |
-| GPTBot | 1,364 | 62,600 | 267 | Newsroom, Services, Platform |
-| OAI-SearchBot | 17,031 | 1,226 | 201 | robots.txt |
+| ClaudeBot | 31,943 | 668 | 1 — all from `216.73.216.60` | Tutorials, Developer pages, robots.txt |
+| GPTBot | 1,513 | 63,296 | 296 | Newsroom, Marketplace, Platform |
+| OAI-SearchBot | 18,912 | 1,276 | 257 | robots.txt |
 | facebookexternalhit | 202 | 0 | 76 | robots.txt |
 | Fake old-Chrome scanner fleet | 4,114 | 0 | 61 | favicon.ico |
-| Credential hunters | 3,342 | 0 | 153 | Probing for /.env, firebase keys and similar files that don't exist here |
+| Credential hunters | 3,342 | 0 | 137 | Probing for /.env, firebase keys and similar files that don't exist here |
+| API hammerer (fake Chrome 147) | 794 | 0 | 22 — mostly from `216.167.0.0/16` (NTT America, Los Angeles, US; operator unknown) | API docs — 792 of its 794 hits went straight to /api, in two short bursts |
+| XML Sitemaps Generator | 505 | 0 | 2 — 503 of its 505 hits from `85.92.66.148` (xml-sitemaps.com's own server, London, UK) | Careers, Marketplace, Help centre |
+| meta-webindexer | 60 | 0 | 35 — all from `57.141.0.0/16` (Meta, Ashburn, Virginia, US) | Pricing, Resources, Status |
+| Claude-User | 9 | 0 | 4 — all from `160.79.106.0/24` (Anthropic, Columbus, Ohio, US) | robots.txt |
 
-**What they were looking for:** robots.txt **21,267** · Tutorials **4,847** · Developer pages **4,553** · API docs **3,589** · sitemap.xml **3,212** · Docs **3,048**
+**What they were looking for:** robots.txt **23,175** · Tutorials **4,890** · Developer pages **4,577** · API docs **3,590** · sitemap.xml **3,224** · Docs **3,066**
+
+**Patterns:** GPTBot mostly bounced off bans — 63,296 banned hits against 1,513 served. OAI-SearchBot did the opposite of digging: every one of its 18,912 hits was a robots.txt check, swept through a single subnet range from 257 different IPs. And ClaudeBot's 31,943 hits came from exactly one IP, all day.
 
 Honeypot login form: **0 submissions** — nobody took that bait.
 
