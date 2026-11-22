@@ -203,7 +203,9 @@ if (is_file($banFile)) {
 }
 // Already banned: count the extra hit against the visitor's group in
 // today's subnet log (so ban hammering is visible in the stats), then
-// answer 429 and stop - no page is generated at all.
+// hold the request for 5 seconds (after logging, before answering) and
+// answer 429 and stop - no page is generated at all. The sleep is per
+// request only; other visitors are not blocked by it.
 if ($shouldBlock) {
     $bf3 = @fopen($banFile, 'c+');
     if ($bf3) {
@@ -235,6 +237,7 @@ if ($shouldBlock) {
             fclose($gf);
         }
     }
+    sleep(5);
     http_response_code(429);
     header('Retry-After: ' . $retryAfter);
     header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -349,7 +352,8 @@ if ($sf) {
 }
 if ($shouldBlock) {
 // A new ban was decided inside the log block: merge it into the global
-// .maze-bans.json (expired entries pruned), then answer this request 429.
+// .maze-bans.json (expired entries pruned), then hold for 5 seconds
+// (after logging) and answer this request 429.
     $bf2 = @fopen($banFile, 'c+');
     if ($bf2) {
         if (flock($bf2, LOCK_EX)) {
@@ -363,6 +367,7 @@ if ($shouldBlock) {
         }
         fclose($bf2);
     }
+    sleep(5);
     http_response_code(429);
     header('Retry-After: ' . $retryAfter);
     header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');

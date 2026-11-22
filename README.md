@@ -14,6 +14,28 @@ in the code.
 
 ---
 
+## Latest changes — 2026-11-22 (5-second hold for banned visitors)
+
+- **Banned visitors now wait 5 seconds before the 429**: when a visitor is
+  banned, the hit is **logged first**, then the script does `sleep(5)`,
+  and only then answers with the bare **429 + Retry-After** — no page,
+  no data during the wait.
+- **Both ban paths do this**:
+  1. the **already-banned fast path** (§5) — the ban file is checked,
+     the banned hit is counted in the group's daily log, then
+     `sleep(5)`, then 429;
+  2. the **new-ban path** (§6) — the hit that trips the 2000/hour limit
+     is logged, the new ban is merged into `.maze-bans.json`, then
+     `sleep(5)`, then 429.
+- **Per-request only**: the sleep holds only that one banned request.
+  Other visitors are not blocked or slowed by it — PHP serves each
+  request separately, so normal (non-banned) visitors still get their
+  page instantly, with no delay at all.
+- Why: banned bots were ignoring the instant 429 and knocking again
+  immediately. The 5-second hold costs the server almost nothing
+  (no page is generated) but wastes the banned bot's time on every
+  single knock.
+
 ## Latest changes — 2026-11-22 (cookie + first-seen group)
 
 - **Cookie probe**: every first-time visitor now gets a `maze_visit` cookie
@@ -127,8 +149,9 @@ Access from Cleo's VM (direct SSH is blocked):
    but only as a stats label inside the log file.
 5. **Ban check (§5)** — `.maze-bans.json` is read first (shared lock). If the
    visitor's IP, group subnet or group key has an unexpired ban, the hit is counted
-   against their group in today's log (`banned_hits`, `last_banned_hit`) and
-   the answer is a bare **429 + Retry-After** — no page is generated. Ban
+   against their group in today's log (`banned_hits`, `last_banned_hit`),
+   then the script holds the request with `sleep(5)` and the answer is a
+   bare **429 + Retry-After** — no page is generated. Ban
    length: **600 s (10 min)**, enforced inside PHP only (no firewall changes).
 6. **Daily per-group log (§6)** — one locked read/modify/write of
    `logs/<group subnet>_<date>.json` (date in **America/New_York**; a fresh
@@ -138,7 +161,7 @@ Access from Cleo's VM (direct SSH is blocked):
    - Rate limit: **> 2000 hits in the current 1-hour window** from the IP
      **or** the first-seen group → 10-minute ban for the IP and group keys,
      merged into `.maze-bans.json` (expired entries pruned), and this request
-     gets 429.
+     gets `sleep(5)` then 429.
    - Housekeeping: ips/agents/groups idle **2 hours** are dropped from today's
      file so it stays small.
 7. **robots.txt / sitemap.xml (§7)** — generated on the fly by the same script
@@ -250,6 +273,7 @@ information only and never group or ban anyone).
 | Rate window | 1 hour (3600 s), per IP / first-seen group |
 | Rate limit | 2000 hits per window → ban |
 | Ban length | 600 s (10 min), 429 + `Retry-After` |
+| Ban hold | `sleep(5)` after logging, before the 429 — both ban paths, per-request only |
 | Visit cookie | `maze_visit`, 30 days, path `/`, value = first-seen group + token |
 | Idle pruning | entries idle ≥ 7200 s dropped from today's log |
 | Honeypot logging | first 5 submissions per group per day |
