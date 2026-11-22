@@ -891,7 +891,20 @@ if($slugTopic!==null){
     elseif($layout==='docs'){ $heading=$slugTopic['name']; $title=$slugTopic['name'].' - '.$brand.' Documentation'; }
     else { $heading=$slugTopic['name'].' - '.$brand; $title=$heading; }
 }
-$featDetailsSel=picks($featureDetails,8); $myFeatures=array_map(fn($fd)=>$fd[0], $featDetailsSel); $myTags=picks($tags,14); $myKeywords=array_merge(picks($keywordsExtra,8), $myTags, [$topic,$brand.' hosting', $brand]);
+$featDetailsSel=picks($featureDetails,8); $myFeatures=array_map(fn($fd)=>$fd[0], $featDetailsSel); $myTags=picks($tags,14);
+// TAGS DERIVATION (page-structure fix 2026-11-22): the tags must describe
+// THIS page, not just the generic pool - and the set must never be empty,
+// because the template prints a "Tags and topics" heading over them (cold
+// reviewers kept finding that heading with nothing under it). Page-specific
+// tags (the slug's topic name, the section, the category, the host topic)
+// are prepended to the seeded generic picks and the list is de-duplicated.
+$pageTags=[];
+if($slugTopic!==null) $pageTags[]=$slugTopic['name'];
+if($pageSection!=='') $pageTags[]=titleWords($pageSection);
+$pageTags[]=$category; $pageTags[]=ucwords($topic);
+foreach($pageTags as $pt2){ if(!in_array($pt2,$myTags,true)) array_unshift($myTags,$pt2); }
+$myTags=array_values(array_unique($myTags));
+$myKeywords=array_merge(picks($keywordsExtra,8), $myTags, [$topic,$brand.' hosting', $brand]);
 $description=dedupeWords($brand.' - '.$heading.'. Explore '.$topic.', '.implode(', ',array_slice($myFeatures,0,4)).', pricing, documentation, guides and support. Trusted hosting in '.$geoPlace['name'].' and worldwide.');
 $myFaqs=picks($faqPairs,5); $myTestimonials=$hostTestimonials; $myGlossary=picks($glossary,4);
 
@@ -948,6 +961,13 @@ $links=uniqueLinks($exploreCount,$scheme,$baseDomain,$port,$subWords,$sections,$
 
 $extraLinks=uniqueLinks($layout==='home'?18:10,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain);
 $relatedLinks=uniqueLinks(6,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain);
+// RELATED TOP-UP (page-structure fix 2026-11-22): uniqueLinks() can return
+// fewer links than asked when label de-duplication runs dry, and the
+// template prints a "Related articles and guides" heading over these
+// cards - so guarantee a full set by topping up with direct builds
+// (URL de-duplication against $used is still enforced).
+$relTries=0;
+while(count($relatedLinks)<6 && $relTries<60){ $relTries++; $rc=buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$linkDomain); if(isset($used[$rc['url']])) continue; $used[$rc['url']]=true; $relatedLinks[]=$rc; }
 // RELATED CARD TITLES (cold-review fix 2026-11-22): a Related card's
 // title is a plausible article title FOR ITS OWN destination slug
 // (from that slug's $slugTopics titles), de-duplicated across the 6
@@ -1024,6 +1044,21 @@ elseif($layout==='status') $sectionOrder=['statusboard','status','faq','related'
 elseif($layout==='company') $sectionOrder=['company','testimonials','inside','faq','related','explore','tags'];
 elseif($layout==='article') $sectionOrder=rshuffle(['features','faq','testimonials','glossary','related','explore','tags','status','inside']);
 else $sectionOrder=rshuffle(['features','pricing','inside','faq','testimonials','glossary','related','explore','tags','status']);
+// VISIBLE SALES BLOCKS BY PAGE TYPE (page-structure fix 2026-11-22): the
+// full sales wrapper (all 5 FAQs, the full testimonial set) belongs on
+// home / pricing / company pages. Docs, article, guide and status pages
+// get SUBSETS - the first entries of the same host-seeded sets, never
+// re-rolled, so host consistency from Phase A is preserved - and the
+// docs/status layouts already omit testimonials and the pricing table
+// entirely via $sectionOrder above. Cold reviewers called the identical
+// full wrapper on every page type the biggest remaining tell.
+$visibleFaqs=$myFaqs; $visibleTestimonials=$myTestimonials;
+if(in_array($layout,['article','guide','docs','status'],true)) $visibleFaqs=array_slice($myFaqs,0,3);
+if(in_array($layout,['article','guide'],true)) $visibleTestimonials=array_slice($myTestimonials,0,1);
+// NO EMPTY HEADINGS (page-structure fix 2026-11-22): drop any section
+// whose content set is empty from this page's order entirely, so a
+// heading can never render with nothing under it on any page type.
+$sectionOrder=array_values(array_filter($sectionOrder,function($k) use ($relatedLinks,$myTags,$extraLinks,$visibleFaqs,$visibleTestimonials){ if($k==='related') return !empty($relatedLinks); if($k==='tags') return !empty($myTags) && !empty($extraLinks); if($k==='faq') return !empty($visibleFaqs); if($k==='testimonials') return !empty($visibleTestimonials); return true; }));
 
 // wordCount counts the words actually rendered in the body (paragraphs,
 // FAQs, testimonials, glossary) instead of a random 900-3200 (audit B11).
@@ -1113,13 +1148,13 @@ header('Link: <'.$canonical.'>; rel="canonical"');
 <?php foreach($sectionOrder as $secKey): ?>
 <?php if($secKey==='features'): ?><section id="features"><h2>Key features of <?=e($brand)?> <?=e($topic)?></h2><ul><?php foreach($featDetailsSel as $fd): ?><li><strong><?=e($fd[0])?></strong> - <?=e($fd[1])?></li><?php endforeach; ?></ul></section>
 <?php elseif($secKey==='pricing'): ?><section id="pricing"><h2>Pricing plans compared</h2><table><tr><th>Plan</th><th>Price / month</th><th>Specs</th><th>Includes</th></tr><?php foreach($plans as $pl): ?><tr><td><?=e($pl['name'])?></td><td>$<?=e($pl['price'])?></td><td><?=e($pl['specs'][0])?> vCPU &middot; <?=e($pl['specs'][1])?> GB RAM &middot; <?=e($pl['specs'][2])?> GB SSD storage &middot; <?=e($pl['specs'][3])?> GB bandwidth</td><td><?=e(implode(', ',$pl['feats']))?></td></tr><?php endforeach; ?></table></section>
-<?php elseif($secKey==='inside'): ?><section><h2>Inside <?=e($brand)?></h2><p><?=e($insideTagline)?> Explore <?=e(implode(", ", $insideFeatures))?> in <?=e(implode(", ", $insideLocations))?>.</p></section>
-<?php elseif($secKey==='faq'): ?><section id="faq"><h2>Frequently asked questions about <?=e($topic)?></h2><?php foreach($myFaqs as $f): ?><h3><?=e($f[0])?></h3><p><?=e($f[1])?></p><?php endforeach; ?></section>
-<?php elseif($secKey==='testimonials'): ?><section id="testimonials"><h2>What customers say about <?=e($brand)?></h2><?php foreach($myTestimonials as $ti2=>$t): ?><div class="box"><p>&ldquo;<?=e($t[0])?>&rdquo;</p><p><?=e($t[1])?> &middot; <?=str_repeat('&#9733;',$myTestStars[$ti2])?></p></div><?php endforeach; ?></section>
+<?php elseif($secKey==='inside'): ?><section><h2>Inside <?=e($brand)?></h2><p><?=e($insideTagline)?>.</p><p>Explore <?=e(implode(", ", $insideFeatures))?> across our data centres in <?=e(implode(", ", $insideLocations))?>.</p></section>
+<?php elseif($secKey==='faq'): ?><section id="faq"><h2>Frequently asked questions about <?=e($topic)?></h2><?php foreach($visibleFaqs as $f): ?><h3><?=e($f[0])?></h3><p><?=e($f[1])?></p><?php endforeach; ?></section>
+<?php elseif($secKey==='testimonials'): ?><section id="testimonials"><h2>What customers say about <?=e($brand)?></h2><?php foreach($visibleTestimonials as $ti2=>$t): ?><div class="box"><p>&ldquo;<?=e($t[0])?>&rdquo;</p><p><?=e($t[1])?> &middot; <?=str_repeat('&#9733;',$myTestStars[$ti2])?></p></div><?php endforeach; ?></section>
 <?php elseif($secKey==='glossary'): ?><section id="glossary"><h2>Glossary</h2><?php foreach($myGlossary as $g): ?><h3><?=e($g[0])?></h3><p><?=e($g[1])?></p><?php endforeach; ?></section>
-<?php elseif($secKey==='related'): ?><section><h2>Related articles and guides</h2><div class="cards"><?php foreach($relatedLinks as $i=>$l): ?><div class="card"><div><h3><a href="<?=e($l['url'])?>"><?=e($l['label'])?></a></h3><p><?=e($relatedTopics[$i])?> - <?php if(in_array($layout,['article','guide'],true)): ?><?=e($readMinutes)?> min read, <?php endif; ?>updated <?=e($updated)?></p></div></div><?php endforeach; ?></div></section>
+<?php elseif($secKey==='related' && !empty($relatedLinks)): ?><section><h2>Related articles and guides</h2><div class="cards"><?php foreach($relatedLinks as $i=>$l): ?><div class="card"><div><h3><a href="<?=e($l['url'])?>"><?=e($l['label'])?></a></h3><p><?=e($relatedTopics[$i])?> - <?php if(in_array($layout,['article','guide'],true)): ?><?=e($readMinutes)?> min read, <?php endif; ?>updated <?=e($updated)?></p></div></div><?php endforeach; ?></div></section>
 <?php elseif($secKey==='explore'): ?><section><h2>Explore <?=e($brand)?> - all sections</h2><ul class="links"><?php foreach($links as $l): ?><li><a href="<?=e($l['url'])?>"><?=e($l['label'])?></a></li><?php endforeach; ?></ul></section>
-<?php elseif($secKey==='tags'): ?><section><h2>Tags and topics</h2><div class="tags"><?php foreach($myTags as $ti=>$t): $tl=$extraLinks[$tagLinkIdx[$ti]]; ?><a href="<?=e($tl['url'])?>" rel="tag"><?=e($t)?></a><?php endforeach; ?></div></section>
+<?php elseif($secKey==='tags' && !empty($myTags) && !empty($extraLinks)): ?><section><h2>Tags and topics</h2><div class="tags"><?php foreach($myTags as $ti=>$t): $tl=$extraLinks[$tagLinkIdx[$ti]]; ?><a href="<?=e($tl['url'])?>" rel="tag"><?=e($t)?></a><?php endforeach; ?></div></section>
 <?php elseif($secKey==='steps'): ?><section id="steps"><h2>Step by step</h2><ol><?php foreach($mySteps as $st): ?><li><?=e($st)?></li><?php endforeach; ?></ol></section>
 <?php elseif($secKey==='statusboard'): ?><section id="statusboard"><h2>Current service status</h2><table><tr><th>Service</th><th>Status</th></tr><tr><td>Web hosting (<?=e($dcCities[0])?>)</td><td><?=e($statusLine)?></td></tr><tr><td>Email delivery</td><td>Running normally</td></tr><tr><td>Control panel</td><td>Running normally</td></tr><tr><td>Backups</td><td>Completed on schedule</td></tr></table><p>90-day uptime: <?=e($uptimeStr)?>% &middot; Average response time: <?=e((string)$responseMs)?> ms</p></section>
 <?php elseif($secKey==='company'): ?><section id="company"><h2>About <?=e($brand)?></h2><p><?=e($brand)?> provides <?=e($topic)?> from data centres in <?=e(implode(', ',$dcCities))?>. The team looks after <?=e($sitesHosted)?> sites, answers support around the clock, and publishes its service status openly - including the incidents it would rather forget.</p><p>Working here means working on the platform our customers use every day: hosting infrastructure, the control panel, and the support desk. Roles open from time to time in engineering, support and operations.</p></section>
