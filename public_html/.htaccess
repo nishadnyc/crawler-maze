@@ -1,0 +1,16 @@
+RewriteEngine On
+
+# Only index.php may be reached directly. Any other real file on disk
+# (ban list, script backups, data files) is forbidden over the web.
+# The script itself still reads/writes those files normally.
+RewriteCond %{REQUEST_FILENAME} -f
+RewriteCond %{REQUEST_FILENAME} !/index\.php$
+RewriteRule ^ - [F,L]
+
+# Everything that is not a real file or folder goes to the maze script.
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.php [L,QSA]
+
+ErrorDocument 404 /index.php
+ErrorDocument 403 /index.php
