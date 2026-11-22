@@ -1,4 +1,4 @@
-name: update_readme_n_page
+name: manuel_update_readme_n_page
 
 # Manual refresh only: recounts the maze logs in logs/ and rewrites the
 # stats panel on the GitHub Pages page (docs/index.html) AND the stats
