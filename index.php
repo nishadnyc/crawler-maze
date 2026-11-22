@@ -509,6 +509,21 @@ $relatedLinks=uniqueLinks(6,$scheme,$baseDomain,$port,$subWords,$sections,$docPa
 $footerLinks=uniqueLinks(40,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain);
 $navLinks=uniqueLinks(8,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain);
 
+// Footer "Sitemap" links ONLY (Nishad 2026-11-22): these are the one
+// exception to the per-visitor cookie domain above. Each footer sitemap
+// link is built with NO link host, so buildUrl() gives it a fresh random
+// sibling subdomain, and hosts are de-duplicated so all 40 are on
+// DISTINCT subdomains. The label is the link's own host, so no two
+// entries read the same. Root cause of the old duplicate labels:
+// buildUrl() derives the label from the link host's first word, so when
+// every footer link shared $linkDomain they all got the visited site's
+// name ("Ahhsh Ahhsh Ahhsh ...") and only their paths differed.
+// Purpose: a crawler that never returns the maze_link cookie (so its
+// main links stay pinned to the visited domain) still hops to a new
+// random subdomain for every sitemap link it follows.
+$footerSitemapLinks=[]; $footerHosts=[]; $footerTries=0;
+while(count($footerSitemapLinks)<40 && $footerTries<800){ $footerTries++; $c=buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,null); $fh=parse_url($c['url'],PHP_URL_HOST); if(!$fh || isset($footerHosts[$fh]) || isset($used[$c['url']])) continue; $footerHosts[$fh]=true; $used[$c['url']]=true; $c['label']=$fh; $footerSitemapLinks[]=$c; }
+
 
 $planName=pick($planNames); $planPrice=random_int(1,29).'.'.pick(['00','49','99','50']);
 $plans=[]; foreach(picks($planNames,3) as $pn){ $plans[]=['name'=>$pn,'price'=>random_int(1,49).'.'.pick(['00','49','99']),'feats'=>picks($features,4)]; }
@@ -596,6 +611,6 @@ header('Link: <'.$canonical.'>; rel="canonical"');
 <?php if (!empty($loginSuccess)): ?><div id="hploginok" role="alert" style="position:fixed;top:16px;right:16px;background:#1a7f37;color:#fff;padding:12px 18px;border-radius:8px;z-index:9999;font-family:sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.3)">Login successful</div><script>setTimeout(function(){var e=document.getElementById('hploginok');if(e){e.style.display='none';}},5000);</script><?php endif; ?>
 <?php /* The hidden honeypot login form: positioned far off-screen, never shown to humans. Field order is deliberate - Website, Login email, Login username, Login password, Full name, Message - so form-filling bots treat it as a real login. Rendered only when the group is under 5 submissions AND the visitor sent no maze_session cookie. */ ?>
 <?php if (!empty($showHiddenForm)): ?><form class="hpform" method="post" action="" style="position:absolute;left:-9999px;top:-9999px" aria-hidden="true"><input type="hidden" name="contact_form" value="1"><label>Website <input type="url" name="website" tabindex="-1" autocomplete="off"></label><label>Login email <input type="email" name="email" tabindex="-1" autocomplete="off"></label><label>Login username <input type="text" name="username" tabindex="-1" autocomplete="off"></label><label>Login password <input type="password" name="password" tabindex="-1" autocomplete="off"></label><label>Full name <input type="text" name="name" tabindex="-1" autocomplete="off"></label><label>Message <textarea name="message" tabindex="-1"></textarea></label><button type="submit" tabindex="-1">Send enquiry</button></form><?php endif; ?>
-<?php /* Footer: 40 more maze links under a "Sitemap" heading, copyright line, random page reference. */ ?>
-<footer><h2 style="font-size:16px">Sitemap</h2><?php foreach($footerLinks as $l): ?><a href="<?=e($l['url'])?>"><?=e($l['label'])?></a><?php endforeach; ?><p>&copy; <?=date('Y')?> <?=e($brand)?>. All rights reserved. &middot; Last updated <?=e($updated)?> &middot; Ref <?=e($pageRef)?> &middot; <?=e($category)?> &middot; <?=e(implode(' | ',array_slice($myTags,0,5)))?></p></footer>
+<?php /* Footer: 40 maze links under a "Sitemap" heading, each on its OWN random subdomain (see $footerSitemapLinks above), copyright line, random page reference. */ ?>
+<footer><h2 style="font-size:16px">Sitemap</h2><?php foreach($footerSitemapLinks as $l): ?><a href="<?=e($l['url'])?>"><?=e($l['label'])?></a><?php endforeach; ?><p>&copy; <?=date('Y')?> <?=e($brand)?>. All rights reserved. &middot; Last updated <?=e($updated)?> &middot; Ref <?=e($pageRef)?> &middot; <?=e($category)?> &middot; <?=e(implode(' | ',array_slice($myTags,0,5)))?></p></footer>
 </div></body></html>
