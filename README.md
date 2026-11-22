@@ -6,26 +6,6 @@
 # Crawler Maze — a maze for AI crawlers
 
 <!-- STATS:START -->
-## One day in the maze
-
-*What the logs say · Sunday, November 22, 2026 · counted from the maze's own logs.*
-
-**23,176** crawler hits served · **808** unique IPs · **241** subnet log files · **2,082** banned hits
-
-| Crawler | Requests | Banned hits | IPs | What it was after |
-| --- | ---: | ---: | --- | --- |
-| ClaudeBot | 15,491 | 573 | 1 — all from `216.73.216.60` | API docs, Developer pages, Tutorials |
-| GPTBot | 15 | 1,418 | 13 | Tools, Features, Community |
-| OAI-SearchBot | 192 | 91 | 129 | robots.txt |
-| facebookexternalhit | 199 | 0 | 73 | robots.txt |
-| Fake old-Chrome scanner fleet | 2,659 | 0 | 61 | favicon.ico |
-| Credential hunters | 2,308 | 0 | 144 | Probing for /.env, firebase keys and similar files that don't exist here |
-
-**What they were looking for:** API docs **2,791** · Developer pages **2,553** · Tutorials **2,224** · robots.txt **2,016** · Docs **1,506** · sitemap.xml **1,140**
-
-Honeypot login form: **0 submissions** — nobody took that bait.
-
-*Every one of those hits was a page that doesn't exist, for a company that doesn't exist. They kept reading anyway.*
 <!-- STATS:END -->
 
 ## The idea
