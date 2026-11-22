@@ -34,7 +34,7 @@ jobs:
 
       - name: Download files from server
         run: |
-          ssh "${{ vars.SERVER_USER }}@${{ secrets.SERVER_HOST }}" \
+          ssh "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" \
             "sudo tar -czf - -C ${{ secrets.SERVER_PATH }} ." \
             | tar -xzf - -C .
 
