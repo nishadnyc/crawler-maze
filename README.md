@@ -7,6 +7,45 @@ ClaudeBot, and friends) wandering an endless, never-repeating maze of plausible
 pages, links, sitemaps and forms — and log what they do while costing almost
 no CPU.
 
+---
+
+## The idea
+
+AI crawlers (GPTBot, ClaudeBot and friends) were crawling the real hosting
+relentlessly — thousands of hits, like a small DDoS — and simple blocks don't
+hold up well against bots that rotate IPs and treat politeness as optional.
+So instead of only pushing them away, this gives them somewhere better to go:
+**an endless fake web to get lost in.**
+
+The core ideas:
+
+- **The trap is the bait, not the block.** Every request is answered with a
+  full, real-looking hosting-company page — plans, pricing, FAQs,
+  testimonials, proper SEO meta — so a crawler believes it has found a gold
+  mine and keeps following links instead of hammering the real sites.
+- **Infinite, not finite.** One script answers for *any* `*.nishad.top`
+  subdomain that has no real site, and every page links onward to more pages
+  and more subdomains. There is no last page, no full site to finish
+  crawling, and nothing to "complete" — the maze just keeps going.
+- **Each door feels like a real room.** A page's company — brand, prices,
+  locations, author, testimonials — is derived deterministically from a hash
+  of the subdomain itself, with no database or stored state. The same URL
+  always shows the same company; a different subdomain is a different
+  company. A careful reader comparing pages can eventually spot the seams,
+  but a crawler that just stores pages and follows links never steps back
+  far enough to see the pattern.
+- **It costs them time, not us CPU.** Pages are text-only and cheap to
+  generate. Visitors are grouped by subnet and logged; a group that hammers
+  past the limit is held for 5 seconds per hit and then temp-banned
+  (bare 429 for 10 minutes) — while still being logged.
+- **We watch what they do.** Per-subnet daily logs record who came, which
+  hosts and paths they hit, and when they got banned. A hidden login
+  honeypot form — invisible to humans, obvious to bots — catches crawlers
+  that try to submit forms, and its submissions are logged too.
+- **It's an experiment, built for fun**: a crawler playground running on
+  spare wildcard subdomains, not a product and not something customers
+  ever see.
+
 This README lives in the **server volume root, next to `public_html/`** — it is
 deliberately **not** inside `public_html`, so it is never web-served. The script
 itself is fully commented; section numbers below match the `SECTION n` banners
