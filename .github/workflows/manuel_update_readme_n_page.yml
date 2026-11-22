@@ -1,11 +1,12 @@
 name: manuel_update_readme_n_page
 
-# Manual refresh only: recounts the maze logs in logs/ and rewrites the
-# stats panel on the GitHub Pages page (docs/index.html) AND the stats
-# section in README.md from the same counts, then commits both files in
-# one commit. Download_Logs.yml runs the same script automatically on
-# every 15-minute log download; run this from the Actions tab only when
-# you want a manual recount in between.
+# DISABLED 2026-11-22 (issue #21): the stats refresh is turned off. This
+# workflow used to run scripts/refresh_stats.py manually to rewrite the
+# stats panel on the GitHub Pages page (docs/index.html) and the stats
+# section in README.md, but the refresh regenerates those sections from a
+# fixed category list and silently overwrites manual table updates, so the
+# refresh step has been removed. The workflow is kept as a no-op shell so
+# it can be restored if the script is ever taught the full table again.
 on:
   workflow_dispatch:
 
@@ -18,8 +19,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Recount logs and rebuild the panel
-        run: python3 scripts/refresh_stats.py
+      - name: Refresh disabled
+        run: echo "Stats refresh is disabled (issue #21) — no files are changed by this workflow."
 
       - name: Commit if the numbers changed
         run: |

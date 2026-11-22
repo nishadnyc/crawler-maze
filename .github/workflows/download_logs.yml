@@ -38,8 +38,10 @@ jobs:
             "sudo tar -czf - -C ${{ secrets.SERVER_PATH }} ." \
             | tar -xzf - -C .
 
-      - name: Recount logs and update stats in README and Pages
-        run: python3 scripts/refresh_stats.py
+      # Stats refresh DISABLED 2026-11-22 (issue #21): refresh_stats.py used to
+      # run here on every sync and regenerated the README/Pages stats from a
+      # fixed category list, silently overwriting manual table updates. The
+      # log download/sync below is unchanged; only the refresh step is removed.
 
       - name: Commit and push changes
         run: |
