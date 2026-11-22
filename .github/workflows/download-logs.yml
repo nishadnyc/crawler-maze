@@ -6,7 +6,6 @@ on:
 jobs:
   fetch-files:
     runs-on: ubuntu-latest
-    environment: production
     permissions:
       contents: write
 
@@ -23,10 +22,12 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "${{ vars.SERVER_HOST }}" >> ~/.ssh/known_hosts
 
-      - name: Download files via SCP
+      - name: Download files from server
         run: |
           mkdir -p ./public_html
-          scp -O -r "${{ vars.SERVER_USER }}@${{ vars.SERVER_HOST }}:${{ vars.SERVER_PATH }}/." ./public_html/
+          ssh "${{ vars.SERVER_USER }}@${{ vars.SERVER_HOST }}" \
+            "sudo tar -czf - -C ${{ vars.SERVER_PATH }} ." \
+            | tar -xzf - -C ./public_html
 
       - name: Commit and push changes
         run: |
