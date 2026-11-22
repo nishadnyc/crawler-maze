@@ -782,12 +782,12 @@ function pathTitle($path): string { $parts=[]; foreach(explode('/',trim((string)
 // title labels ('Create Base Docs Dns Settings') read as keyword salad,
 // and the random-prefix patch loops that masked them are gone.
 function slugTopicName(string $slug): string { $t=$GLOBALS['slugTopics'][$slug]??null; return ($t!==null && isset($t['name'])) ? $t['name'] : titleWords($slug); }
-function topicLinkLabel(string $section, string $slug): string { $name=slugTopicName($slug); $t=$GLOBALS['slugTopics'][$slug]??null; if(in_array($section,['blog','newsroom','resources'],true) && $t!==null && !empty($t['titles'])){ $pool=array_merge($t['titles'],[$name.' Guide','Guide to '.$name]); } else { $pool=[$name,$name.' Guide','Guide to '.$name,$name.' Explained',$name.' Overview',$name.' Step by Step',$name.' Checklist','About '.$name]; } return dedupeWords($pool[mt_rand(0,count($pool)-1)]); }
+function topicLinkLabel(string $section, string $slug): string { $name=slugTopicName($slug); $t=$GLOBALS['slugTopics'][$slug]??null; // LABEL TAUTOLOGY FIX (cold reviews 2026-11-22): never stack a template word the topic name already ends with - a topic called 'FTP Guide' must never become 'Guide to FTP Guide' or 'Caching Guide Guide'. $nameWords=explode(' ',$name); $lastWord=strtolower((string)end($nameWords)); $pool=[$name,$name.' Explained',$name.' Overview',$name.' Step by Step','About '.$name]; if($lastWord!=='guide'){ $pool[]=$name.' Guide'; $pool[]='Guide to '.$name; } if($lastWord!=='checklist'){ $pool[]=$name.' Checklist'; } if(in_array($section,['blog','newsroom','resources'],true) && $t!==null && !empty($t['titles'])){ $pool=array_merge($t['titles'],$pool); } return dedupeWords($pool[mt_rand(0,count($pool)-1)]); }
 function buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$linkHost=null): array { if($linkHost!==null && $linkHost!==''){ $w=explode('.',$linkHost)[0]; $urlHost=$linkHost; } else { $w=pick($subWords); if(mt_rand(0,2)===0) $w.='-'.pick($subWords); $urlHost=$w.'.'.$baseDomain; } $s=pick($sections); $slug=trim(slugify(titleWords(pick($docPages))),'-'); if($slug==='') $slug=$s; $basePath='/'.$s.'/'.$slug; $id=mt_rand(10000,89999); $idGuard=0; while(isset($GLOBALS['mazeUsedIds'][$id]) && $GLOBALS['mazeUsedIds'][$id]!==$basePath && $idGuard<400){ $id=mt_rand(10000,89999); $idGuard++; } $GLOBALS['mazeUsedIds'][$id]=$basePath; $path=$basePath.'/'.$id; $label=topicLinkLabel($s,$slug); return ['label'=>$label,'url'=>$scheme.'://'.$urlHost.$port.$path,'path'=>$path,'section'=>$s]; }
 // De-duplicates by URL (via $used, shared across lists) AND by label
 // within the returned list, so every visible title in one list is
 // distinct even though the trailing path number is not part of it.
-function uniqueLinks($n,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,&$used,$linkHost=null): array { $out=[];$tries=0;$labels=[]; while(count($out)<$n&&$tries<$n*40){ $tries++; $c=buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$linkHost); if(isset($used[$c['url']])||isset($labels[$c['label']])) continue; $used[$c['url']]=true; $labels[$c['label']]=true; $out[]=$c; } return $out; }
+function uniqueLinks($n,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,&$used,$linkHost=null,$topicCap=0): array { $out=[];$tries=0;$labels=[];$topicCounts=[]; while(count($out)<$n&&$tries<$n*60){ $tries++; $c=buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$linkHost); if(isset($used[$c['url']])||isset($labels[$c['label']])) continue; // SAME-TOPIC CAP (cold reviews 2026-11-22): within one capped list (the Explore block) a single slug topic may appear at most $topicCap times, so one topic cannot fill a block with reworded variants of itself ('Caching Guide' / 'Caching Guide Explained' / 'Caching Guide Overview' / ...). Different SECTIONS for the same topic still count toward the cap - section variety alone was not enough. if($topicCap>0){ $cSegs=explode('/',trim($c['path'],'/')); $cSlug=$cSegs[1]??''; if($cSlug!=='' && ($topicCounts[$cSlug]??0)>=$topicCap) continue; } $used[$c['url']]=true; $labels[$c['label']]=true; if($topicCap>0 && $cSlug!=='') $topicCounts[$cSlug]=($topicCounts[$cSlug]??0)+1; $out[]=$c; } return $out; }
 
 // ---------------------------------------------------------------------------
 // SEEDED PER-HOST STABILITY (Nishad 2026-11-22): NO storage of any
@@ -893,7 +893,12 @@ if($slugTopic!==null){
 }
 $featDetailsSel=picks($featureDetails,8); $myFeatures=array_map(fn($fd)=>$fd[0], $featDetailsSel); $myTags=picks($tags,14); $myKeywords=array_merge(picks($keywordsExtra,8), $myTags, [$topic,$brand.' hosting', $brand]);
 $description=dedupeWords($brand.' - '.$heading.'. Explore '.$topic.', '.implode(', ',array_slice($myFeatures,0,4)).', pricing, documentation, guides and support. Trusted hosting in '.$geoPlace['name'].' and worldwide.');
-$myFaqs=picks($faqPairs,5); $myTestimonials=$hostTestimonials; $myGlossary=picks($glossary,4);
+$myFaqs=picks($faqPairs,5);
+// FAQ UPTIME CONSISTENCY (cold reviews 2026-11-22): the uptime-guarantee
+// FAQ must quote THIS HOST's own seeded uptime (the same $uptimeStr the
+// status block prints), not a hardcoded 99.9% that contradicts it.
+foreach($myFaqs as &$faqRef){ if(stripos($faqRef[0],'uptime guarantee')!==false){ $faqRef[1]=str_replace('99.9',$uptimeStr,$faqRef[1]); } } unset($faqRef);
+$myTestimonials=$hostTestimonials; $myGlossary=picks($glossary,4);
 
 $featA=picks($features,2); $featB=picks($features,2); $featC=picks($features,2); $adjA=picks($adjectives,2); $locA=$dcCities; $topicA=picks($blogTopics,3);
 $corpusSel=picks($corpusParas,6);
@@ -933,14 +938,15 @@ $authorFirst=strtolower(explode(' ',$author)[0]);
 // stability even with a seeded offset.
 $pageAnchorTs=strtotime('2026-11-01 00:00:00 UTC'); $publishedTs=$pageAnchorTs-$pubAge; $updatedTs=$publishedTs+mt_rand(3600,max(7200,$pubAge-3600)); if($updatedTs>$pageAnchorTs) $updatedTs=$pageAnchorTs;
 $published=date('F j, Y',$publishedTs); $updated=date('F j, Y',$updatedTs); $publishedIso=date('c',$publishedTs); $updatedIso=date('c',$updatedTs);
-$readMinutes=mt_rand(4,18); $commentCount=mt_rand(0,89); $viewCount=number_format(mt_rand(180,98000)); // $rating/$reviewCount are HOST traits now (Phase A) - the product rating must not re-roll per page.
+$readMinutes=mt_rand(4,18); $commentCount=mt_rand(0,89); $viewCount=number_format(mt_rand(180,4500)); // ARTICLE NUMBERS (cold reviews 2026-11-22): views stay in a modest range for a niche article (was up to 98,000 on a handful of paragraphs), $readMinutes is re-derived from the real word count further down, and $rating/$reviewCount are HOST traits (Phase A) shown only in product contexts - never as an article's own rating.
 // Footer Ref is derived from host+path, so the same URL shows the same
 // Ref on every load (audit B10) instead of re-rolling per request.
 $pageRef=substr(md5($host.'|'.$requestPath),0,18);
 
 $used=[]; $mainLink=buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$linkDomain); $used[$mainLink['url']]=true;
 $exploreCount=['home'=>80,'article'=>48,'guide'=>40,'docs'=>32,'pricing'=>24,'company'=>24,'status'=>16][$layout] ?? 40;
-$links=uniqueLinks($exploreCount,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain);
+// Explore same-topic cap: at most 2 links per slug topic in the block (the homepage's 80 links across only 30 topics force a floor of 3 there - ceil(80/30) - or the block could not reach its usual count).
+$links=uniqueLinks($exploreCount,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain,max(2,(int)ceil($exploreCount/max(1,count($slugTopics)))));
 // Explore labels come straight from buildUrl() now (see REALISTIC LINK
 // LABELS there): each label names its own destination's slug topic.
 // The old random-prefix patch loop that masked the host-derived
@@ -1033,6 +1039,9 @@ foreach($myTestimonials as $t) $bodyWords.=' '.$t[0].' '.$t[1];
 foreach($myGlossary as $g) $bodyWords.=' '.$g[0].' '.$g[1];
 foreach($myFeatures as $f) $bodyWords.=' '.$f;
 $wordCount=str_word_count(strip_tags($bodyWords));
+// Read time comes from the words actually rendered (~200 wpm), not a
+// random 4-18 minutes: a short page can no longer claim a long read.
+$readMinutes=max(1,(int)round($wordCount/200));
 
 // Structured data (JSON-LD): Organization, WebSite, WebPage, BlogPosting (inner pages),
 // FAQPage, Product with rating + ItemList - maximum SEO
@@ -1046,11 +1055,17 @@ $ldGraph=[
 // Homepage is a website, not an article: only non-home pages get the
 // BlogPosting node in their structured data.
 if(in_array($layout,['article','guide'],true)) $ldGraph[]=['@type'=>'BlogPosting','headline'=>$heading,'description'=>$description,'author'=>['@type'=>'Person','name'=>$author],'publisher'=>['@type'=>'Organization','name'=>$brand,'url'=>$canonical],'datePublished'=>$publishedIso,'dateModified'=>$updatedIso,'articleSection'=>$category,'keywords'=>implode(', ',$myKeywords),'wordCount'=>$wordCount,'timeRequired'=>'PT'.$readMinutes.'M'];
-$ld=['@context'=>'https://schema.org','@graph'=>array_merge($ldGraph,[
+// PRODUCT SCHEMA SCOPING (cold reviews 2026-11-22): the Product /
+// AggregateRating / Offer node belongs on the homepage and pricing-type
+// pages only. Docs and blog/guide articles carrying a product offer read
+// as generated doorway pages; those keep their BlogPosting node (added
+// above) with no product offer attached.
+$ldTail=[
  ['@type'=>'FAQPage','mainEntity'=>array_map(fn($f)=>['@type'=>'Question','name'=>$f[0],'acceptedAnswer'=>['@type'=>'Answer','text'=>$f[1]]],$myFaqs)],
- ['@type'=>'Product','name'=>$brand.' '.ucwords($topic),'description'=>$description,'brand'=>['@type'=>'Brand','name'=>$brand],'aggregateRating'=>['@type'=>'AggregateRating','ratingValue'=>$rating,'reviewCount'=>$reviewCount],'offers'=>['@type'=>'Offer','price'=>$planPrice,'priceCurrency'=>'USD','availability'=>'https://schema.org/InStock','url'=>$canonical]],
- ['@type'=>'ItemList','name'=>'Explore '.$brand,'itemListElement'=>array_map(fn($i,$l)=>['@type'=>'ListItem','position'=>$i+1,'name'=>$l['label'],'url'=>$l['url']],array_keys(array_slice($links,0,12)),array_slice($links,0,12))],
-])];
+];
+if($layout==='home'||$layout==='pricing'){ $ldTail[]=['@type'=>'Product','name'=>$brand.' '.ucwords($topic),'description'=>$description,'brand'=>['@type'=>'Brand','name'=>$brand],'aggregateRating'=>['@type'=>'AggregateRating','ratingValue'=>$rating,'reviewCount'=>$reviewCount],'offers'=>['@type'=>'Offer','price'=>$planPrice,'priceCurrency'=>'USD','availability'=>'https://schema.org/InStock','url'=>$canonical]]; }
+$ldTail[]=['@type'=>'ItemList','name'=>'Explore '.$brand,'itemListElement'=>array_map(fn($i,$l)=>['@type'=>'ListItem','position'=>$i+1,'name'=>$l['label'],'url'=>$l['url']],array_keys(array_slice($links,0,12)),array_slice($links,0,12))];
+$ld=['@context'=>'https://schema.org','@graph'=>array_merge($ldGraph,$ldTail)];
 $ldJson=json_encode($ld, JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
 // Geo place is a host trait - picked in Phase A above.
 // Accent colour is a host trait - picked in Phase A above (audit A4).
@@ -1098,7 +1113,7 @@ header('Link: <'.$canonical.'>; rel="canonical"');
 <p style="margin-top:16px;font-size:13px;color:#94a3b8"><a href="/">Home</a> &rsaquo; <a href="<?=e($scheme.'://'.$host.$port.$mainLink['path'])?>"><?=e($category)?></a> &rsaquo; <?=e($brand)?></p></header>
 <main><?php if(in_array($layout,['article','guide'],true)): ?><article>
 <h1><?=e($heading)?></h1>
-<div class="meta">By <?=e($author)?> at <?=e($brand)?> &middot; Published <time datetime="<?=e($publishedIso)?>"><?=e($published)?></time> &middot; Last updated <time datetime="<?=e($updatedIso)?>"><?=e($updated)?></time><br><?=e((string)$readMinutes)?> min read &middot; <?=e($viewCount)?> views &middot; Rated <?=$rating?>/5 from <?=number_format($reviewCount)?> reviews &middot; Category: <?=e($category)?></div>
+<div class="meta">By <?=e($author)?> at <?=e($brand)?> &middot; Published <time datetime="<?=e($publishedIso)?>"><?=e($published)?></time> &middot; Last updated <time datetime="<?=e($updatedIso)?>"><?=e($updated)?></time><br><?=e((string)$readMinutes)?> min read &middot; <?=e($viewCount)?> views &middot; Category: <?=e($category)?></div>
 <?php elseif($layout==='docs'): ?><article>
 <h1><?=e($heading)?></h1>
 <div class="meta"><?=e($brand)?> documentation &middot; Last updated <time datetime="<?=e($updatedIso)?>"><?=e($updated)?></time> &middot; <?=e((string)$readMinutes)?> min read</div>
