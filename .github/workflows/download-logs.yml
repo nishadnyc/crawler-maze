@@ -27,8 +27,8 @@ jobs:
         run: |
           mkdir -p ./public_html
           ssh "${{ vars.SERVER_USER }}@${{ vars.SERVER_HOST }}" \
-            "docker exec ${{ vars.CONTAINER_NAME }} tar -czf - -C /home/container/public_html ." \
-            | tar -xzf - -C ./public_html
+            "docker cp ${{ vars.CONTAINER_NAME }}:/home/container/public_html/. -" \
+            | tar -xf - -C ./public_html
 
       - name: Commit and push changes
         run: |
