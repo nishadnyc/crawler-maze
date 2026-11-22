@@ -16,11 +16,14 @@ elseif (filter_var($probeIp, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) { $pp = expl
 else $probeSubnet = 'unknown';
 $probeAgent = 'ua:' . substr(md5($probeUa), 0, 12);
 foreach (['OAI-SearchBot','GPTBot','ChatGPT-User','ClaudeBot','Claude-User','anthropic-ai','Googlebot','Google-Extended','bingbot','PerplexityBot','CCBot','Bytespider','Applebot','Meta-ExternalAgent','Amazonbot','cohere-ai','Diffbot','ImagesiftBot','Omgilibot','FacebookBot','Twitterbot','LinkedInBot','SemrushBot','AhrefsBot','MJ12bot','DotBot','PetalBot','DataForSeoBot','Barkrowler','l9scan','LeakIX'] as $kb) { if (stripos($probeUa, $kb) !== false) { $probeAgent = 'bot:' . $kb; break; } }
-if (empty($_COOKIE['maze_visit'])) {
+if (empty($_COOKIE['_vid']) && empty($_COOKIE['maze_visit'])) {
     // The group IS the first-seen subnet - no bot name in the cookie:
     // names are unreliable, the first-seen group is the identity.
+    // COOKIE RENAME (2026-11-22 cheap pass): maze_visit -> _vid. The old
+    // name is still READ everywhere as a fallback so existing visitors
+    // keep their group; only the new name is ever set.
     $groupTag = preg_replace('/[^A-Za-z0-9_.-]/', '_', $probeSubnet);
-    setcookie('maze_visit', $groupTag . '__' . bin2hex(random_bytes(8)), time() + 2592000, '/');
+    setcookie('_vid', $groupTag . '__' . bin2hex(random_bytes(8)), time() + 2592000, '/');
 }
 /*
  * ============================================================================
@@ -118,7 +121,7 @@ $features=['one-click installs','automatic backups','free SSL certificates','rea
 $sections=['features','pricing','docs','support','blog','guides','tutorials','status','community','changelog','resources','about','services','solutions','products','platform','company','careers','partners','affiliates','reviews','testimonials','case-studies','webinars','events','newsroom','knowledge-base','help-centre','developers','api','integrations','marketplace','templates','tools','calculator','comparison'];
 $docPages=['getting-started','installation','configuration','best-practices','troubleshooting','api-reference','security-guide','migration','backups','performance-tips','ssl-setup','dns-settings','email-setup','database-setup','file-manager','ssh-access','ftp-guide','cron-jobs','php-settings','caching-guide','cdn-setup','staging-guide','deployment-guide','scaling-guide','monitoring-guide','billing-guide','domain-transfer','wordpress-guide','woocommerce-guide','laravel-guide'];
 $blogTopics=['improving site speed','choosing the right plan','securing your server','backing up your data','scaling your application','understanding bandwidth','setting up SSL','monitoring uptime','optimizing databases','reducing bounce rate','choosing a domain name','migrating your website','WordPress speed tips','ecommerce best practices','SEO fundamentals','content delivery explained','cloud vs shared hosting','VPS buying guide','website security checklist','email deliverability tips'];
-$taglines=['Hosting so fast, your visitors will think you hired a wizard','Uptime so good, our status page is getting bored','Servers in more places than you have socks','We reboot less than you do','Now with 100% fewer hamsters powering the servers','Your site, but awake at 3am so you do not have to be','Built for builders, loved by businesses everywhere','The hosting platform teams switch to and stay with'];
+$taglines=['Fast, dependable hosting for sites that need to stay online','Clear pricing, honest support and servers that stay out of your way','Built for builders, loved by businesses everywhere','The hosting platform teams switch to and stay with','Everything you need to launch, run and grow a website','Dependable infrastructure with support from people who host sites themselves','Simple plans that scale as your traffic grows','Hosting set up properly, so you can get on with your work'];
 $planNames=['Starter','Growth','Business','Pro','Turbo','Mega','Ultra','Cloud Nine','Launch','Scale','Enterprise','Creator','Developer','Agency'];
 $testimonials=[['My site loaded before I finished clicking. I checked twice.','Dan, indie maker'],['Support answered at 2am. At 2am! I was not even awake properly.','Marta, shop owner'],['We migrated on a Friday and nothing broke. Nobody believed us either.','Tom, developer'],['Our old host sent us a farewell email. It was just a blank page.','Ana, blogger'],['Uptime is so boring now. Nothing ever goes down to complain about.','Chris, agency lead'],['I understood the dashboard on the first try. That never happens.','Jo, first-time founder'],['Page speed doubled overnight after the move.','Priya, ecommerce manager'],['The staging tool saved our launch. Twice in one week.','Leo, product lead']];
 $faqPairs=[['How fast is the setup?','Most sites are live in under five minutes, which is quicker than making coffee properly.'],['Can I upgrade later?','Yes. Upgrading is instant and does not move your files or change your passwords.'],['Is there a free trial?','Yes, and no card is required to start your trial.'],['What happens if I break something?','Backups happen daily, so you can restore in one click.'],['Do you support my stack?','If it runs on a server, there is a very good chance we already host it.'],['Can I host multiple websites?','Yes, most plans let you add multiple sites, databases and email accounts.'],['Do you offer free SSL?','Every plan includes free SSL certificates with automatic renewal.'],['What is your uptime guarantee?','We guarantee 99.9% uptime backed by our service level agreement.'],['Can you migrate my site for free?','Yes, free migrations are included and usually completed within 24 hours.'],['Do you have a money-back guarantee?','Yes, a 30-day money-back guarantee on all new hosting plans.']];
@@ -140,6 +143,74 @@ $authors=['Alex Morgan','Sarah Lee','David Chen','Emma Wilson','James Taylor','P
 $categories=['Hosting Guides','Cloud Technology','Web Development','Website Security','Performance','Business Growth','Tutorials','News & Updates','Case Studies','Product Updates'];
 $tags=['cloud hosting','web hosting','VPS','WordPress','SSL','CDN','performance','security','backups','domains','email hosting','SEO','website speed','server management','deployment','databases','caching','uptime','scaling','migration'];
 $glossary=[['Uptime','The percentage of time a server stays online and reachable.'],['CDN','A network of edge servers that delivers content closer to visitors.'],['SSL Certificate','Encrypts traffic between a browser and a server with HTTPS.'],['NVMe','Very fast storage that dramatically reduces load times.'],['Staging','A private copy of your site for testing changes safely.'],['DNS','The system that translates domain names to server addresses.']];
+// ---------------------------------------------------------------------------
+// COHERENT CORPUS (2026-11-22 big rewrite): hand-written hosting copy that
+// replaces the old cross-product generator. Features get a name + a concrete
+// description; article titles and paragraphs are complete, meaningful texts
+// about real hosting topics. {brand}, {city} and {topic} are substituted at
+// render time. Pages stay infinite because the count comes from host x path
+// seeds sampling this corpus, not from the corpus size.
+// ---------------------------------------------------------------------------
+$featureDetails=[
+['NVMe storage','Solid-state NVMe drives cut page load times because the server spends less time waiting on disk reads, which matters most for database-driven sites.'],
+['Automatic daily backups','A full copy of your files and databases is taken every day and kept for 30 days, so a bad update or an accidental deletion is a restore, not a rebuild.'],
+['Free SSL certificates','Every domain on your account gets a Lets Encrypt certificate issued automatically and renewed before it expires, so visitors always see the padlock.'],
+['Built-in page caching','Frequently requested pages are stored in memory and served without running PHP or touching the database, which keeps busy pages fast under load.'],
+['Staging environments','Clone your live site to a private staging address, test changes there, and push them live only when they are ready.'],
+['One-click installers','WordPress, WooCommerce and other popular applications install in a couple of clicks with sensible defaults already set.'],
+['Malware scanning','Files are scanned daily against known malware signatures, and anything suspicious is quarantined and reported to you the same day.'],
+['DDoS protection','Traffic filtering at the network edge absorbs common denial-of-service attacks before they reach your site.'],
+['Git deployment','Push to your repository and the new code is deployed automatically, with the previous release kept for a one-click rollback.'],
+['SSH and SFTP access','Full shell access for developers who prefer the command line, plus secure file transfer for everyone else.'],
+['Cron job scheduling','Run scripts on a schedule you set - cleanup tasks, report generation, cache warming - without third-party services.'],
+['PHP version selector','Choose the PHP version each site runs, from older releases for legacy code to the latest for new projects.'],
+['Redis object caching','WordPress and other applications can store database query results in Redis, which noticeably speeds up logged-in and dynamic pages.'],
+['MySQL and PostgreSQL','Create databases from the control panel, manage users and permissions, and import or export through phpMyAdmin.'],
+['Free site migration','Our team moves your existing site, email and databases from your old host and checks everything before the switch.'],
+['Uptime monitoring','Your site is checked every minute from several locations, and you are alerted if it stops responding.'],
+['Two-factor authentication','Protect your hosting account login with an authenticator app, on top of your password.'],
+['Team access controls','Invite colleagues with their own logins and limit each person to the sites and tools they actually need.'],
+['Email hosting included','Create mailboxes on your own domain with spam filtering, webmail, and IMAP access for your mail app.'],
+['Global data centres','Host your site close to your visitors, with locations across North America, Europe and Asia-Pacific.'],
+['Instant scaling','Move to a larger plan in one click when traffic grows; files, settings and email carry over unchanged.'],
+['Security patching','Server software and PHP security updates are applied for you, including emergency patches outside the normal schedule.'],
+['Web application firewall','Common attack patterns against WordPress and other applications are blocked before the request reaches your code.'],
+['Daily snapshots','Beyond backups, point-in-time snapshots let you roll the whole account back to how it looked yesterday morning.'],
+['Free CDN','Static files are copied to edge servers worldwide, so a visitor in another continent still gets a fast first load.'],
+['Spam protection','Incoming email is filtered for spam and phishing, and outbound sending is monitored so your domain keeps a clean reputation.'],
+['Resource usage graphs','See CPU, memory and disk use per site, so you can tell whether slow pages need more resources or better code.'],
+['Instant activation','Your account and first site are ready within minutes of signing up - no waiting for manual review.'],
+['30-day money-back guarantee','If the service is not right for you, cancel within 30 days of signing up for a full refund of the hosting fee.'],
+['24/7 expert support','Real hosting engineers answer tickets and live chat around the clock, including weekends and holidays.'],
+];
+$articleTitles=['How to speed up a slow WordPress site','Choosing the right hosting plan for a growing business','What to check before migrating your website','A practical guide to website backups','How SSL certificates work and why every site needs one','Caching explained: why your second page load is faster','How to set up a staging site before a big update','Reading your server resource graphs without guessing','What uptime monitoring actually tells you','Keeping WordPress plugins updated without breaking your site','How to move email to your own domain','When a shared plan stops being enough','Database optimisation for busy WooCommerce stores','How CDNs deliver your pages from closer to home','A checklist for launching a new website','Recovering a hacked site: first steps that matter','How PHP versions affect your site speed','Setting up cron jobs for routine maintenance','What to do when traffic suddenly spikes','Understanding bandwidth, visits and resource limits','How automatic security patching protects older sites','Testing a redesign on staging before anyone sees it','Why page speed affects search rankings and sales','Backing up before a sale, a launch or a redesign','How to choose a data centre location','Moving from another host without downtime','What a web application firewall blocks, in plain terms','Making a small business website load in under two seconds','How to spot a plugin that is slowing your site down','Preparing your store for a busy weekend','The difference between backups and snapshots','How DNS changes propagate when you move hosts','Securing the admin area of your website','What happens when you outgrow your plan','A calm guide to restoring a backup','How object caching helps logged-in users','Email deliverability: why messages land in spam','Monitoring a portfolio of client sites from one account','How to give a developer access without sharing your password','Planning capacity for a site that keeps growing'];
+$corpusParas=[
+'{brand} hosts websites for small businesses, shops and independent developers who need their sites to load quickly and stay online. Every plan runs on NVMe storage in {city} and other data centres, with page caching switched on by default.',
+'Most people choose {brand} because moving is painless. The migration team copies your files, databases and email from your old host, checks the site on a temporary address, and only switches your domain over once everything works.',
+'Backups run every night without you having to remember. If an update breaks something, you can restore the whole site - or just the database - to how it looked yesterday, last week, or up to 30 days ago.',
+'Security is handled in layers. Certificates are issued and renewed automatically, server software is patched as updates are released, and a firewall filters out the automated attacks that probe every website, every day.',
+'When your site gets busier, you do not have to move house. Plans scale in place: more processor time, more memory and more storage are added to the same account, and your site keeps its address, its email and its settings.',
+'Support at {brand} is staffed by people who run hosting servers for a living. If you open a ticket at three in the morning, the person who answers can actually look at your server, not just read from a script.',
+'A staging copy of your site is included because updates deserve a rehearsal. Clone the live site, try the new theme or plugin there, and push the change live only when you have seen it working.',
+'Page speed is mostly a hosting problem before it is a design problem. Fast storage, a current PHP version and proper caching will do more for a slow site than deleting images ever will.',
+'Your account shows resource use honestly. Graphs for processor, memory and disk make it obvious whether a slow page needs a bigger plan or whether one misbehaving plugin is eating the allowance.',
+'Email on your own domain is part of the service, with spam filtering and proper authentication records set up for you, so invoices and order confirmations reach inboxes instead of junk folders.',
+'{brand} monitors every hosted site every minute. If a site stops responding, engineers see the alert with the server data attached, which is why most incidents are fixed before customers notice them.',
+'Developers get the tools they expect: SSH access, Git deployment, a choice of PHP versions, staging environments and scheduled tasks, all without filing a support ticket to have them enabled.',
+'For online shops, the details that matter are unglamorous: a database that keeps up at checkout, backups you can actually restore, and a support team that understands a sale weekend is not the time for surprises.',
+'Choosing where your site lives still matters. Hosting in or near {city} keeps load times low for local visitors, while the included CDN serves your images and files quickly to everyone further away.',
+'There is no lock-in to escape later. Your domain, your files and your databases are yours, exports are available from the control panel, and leaving - though we would rather you stayed - is a normal feature, not a negotiation.',
+'Small sites are not second-class here. The entry plan runs on the same platform as the largest one; it simply includes fewer resources, so a personal site gets the same caching, backups and security as a busy store.',
+'Updates are where websites usually break, which is why {brand} takes a snapshot before major changes and keeps the previous version one click away. Trying something new should never risk the site you already have.',
+'The control panel is deliberately plain. The things people do every week - add a domain, create an email address, restore a backup, check resource use - are each one or two clicks from the home screen.',
+'If you manage sites for clients, team accounts let each client log in to their own site while you keep an overview of all of them, including who changed what and when.',
+'Traffic spikes are a good problem handled badly by most hosts. Here, caching absorbs the surge, resource graphs show exactly what happened, and upgrading afterwards takes minutes rather than a migration.',
+'Everything about {topic} comes back to the same basics: fast storage, enough memory, software that is kept up to date, and help from people who know the platform when something does go wrong.',
+'We publish our service status openly, including the incidents we would rather forget. A host that hides downtime is asking you to trust it about everything else, too.',
+'Getting started takes about five minutes: choose a plan, register or transfer a domain, and either install WordPress fresh or let the migration team bring your existing site across.',
+'Questions before you buy are welcome. Tell support what you are running - the platform, the plugins, roughly how many visitors - and they will tell you plainly which plan fits, including if it is the cheapest one.',
+];
+$howtoSteps=['Log in to your control panel and open the site you want to work on.','Take a backup or snapshot first, so you can undo the change if the result is not what you expected.','Open the relevant settings page from the left-hand menu; most changes here apply immediately.','Make the change for one site first if you manage several, and check the result before repeating it elsewhere.','Clear the page cache from the caching page so you are looking at the new version, not a stored copy.','Load the site in a private browser window to see exactly what a first-time visitor sees.','Check the resource graphs after an hour of normal traffic to confirm the change helped.','If anything looks wrong, restore the snapshot from the backups page - it takes about a minute.','Turn on uptime alerts for the site so you hear about problems before your visitors report them.','Note what you changed in your own records; future you will be glad past you did.','For WordPress sites, update plugins one at a time and reload the site between each update.','Test your contact and checkout forms after any change - they fail quietly more often than pages do.','Check the site on a phone as well as a desktop; layout problems hide at smaller widths.','Review the change again after a week, when real visitor data has replaced first impressions.'];
 $keywordsExtra=['best web hosting','cheap cloud hosting','fast WordPress hosting','reliable VPS hosting','secure website hosting','hosting with free SSL','hosting with CDN','managed cloud servers','scalable hosting plans','hosting for small business','hosting for developers','hosting for ecommerce'];
 
 // ---------------------------------------------------------------------------
@@ -162,8 +233,12 @@ foreach($brandPre as $bp){ foreach(picks($brandSuf,3) as $bs){ $brands[]=$bp.$bs
 $topicPre=['cloud','website','server','app','database','email','domain','WordPress','VPS','dedicated','shared','managed','secure','fast','scalable','enterprise','developer','ecommerce','business','startup'];
 $topicSuf=['hosting','management','infrastructure','deployment','automation','monitoring','security','storage','delivery','solutions','platform','services','tools','migration','optimization','backups'];
 foreach($topicPre as $tp){ foreach(picks($topicSuf,4) as $ts){ $topics[]=$tp.' '.$ts; } } $topics=array_values(array_unique($topics));
-foreach($adjectives as $a){ foreach($nouns as $n){ $features[]=$a.' '.$n.' management'; $features[]=$a.' '.$n.' protection'; } } $features=array_values(array_unique($features));
-foreach($sections as $s){ foreach(['guide','hub','centre','portal','lab','index','overview'] as $x){ $docPages[]=$s.'-'.$x; } } $docPages=array_values(array_unique($docPages));
+// REMOVED (2026-11-22 corpus rewrite): the old adjectives x nouns cross-product
+// ('secure database security', 'automated infrastructure protection') was the
+// strongest gibberish tell. $features stays the hand-written base list only.
+// REMOVED (2026-11-22 corpus rewrite): sections x suffix doc-page combos
+// produced slugs like 'blog-index' that leaked into prose ('learn more about
+// blog-index'). $docPages stays the hand-written base list only.
 // No year suffixes ('in 2024/2025/2026') on blog topics: a year baked
 // into an article title reads as template-slot leakage / stale content
 // next to the page's own seeded dates (Claude review 2026-11-22).
@@ -178,7 +253,7 @@ $sentenceStarters=['For teams of every size','Whether you are just starting out'
 $sentenceMiddles=['the right hosting choice saves time, money and stress','a fast server changes how visitors feel about your brand','good infrastructure quietly does the heavy lifting','clear pricing and honest support make all the difference','automation removes the boring parts of running a site','security and backups protect months of hard work','scaling should be a button, not a migration project','monitoring catches problems before your customers do'];
 $sentenceEnders=['and that is exactly what we built for.','which is why so many projects start here.','without lock-ins, surprises or jargon.','with help available whenever you need it.','so you can focus on the work that matters.','and it shows in every load time.'];
 // Expand paragraphs combinatorially: 12 starters x 8 middles x 6 enders = 576 combos, plus features/topics mixed in
-for($i=0;$i<24;$i++){ $paragraphs[]=pick($sentenceStarters).', '.pick($sentenceMiddles).' Our '.pick($nouns).' brings '.implode(', ', picks($features,3)).' together for '.pick($topics).' in '.pick($locations).' — '.pick($sentenceEnders); }
+// (Combinatorial sentence paragraphs removed 2026-11-22 - see $corpusParas.)
 
 
 
@@ -220,8 +295,9 @@ foreach ($knownBots as $kb) { if (stripos($visitorUa, $kb) !== false) { $agentKe
 // whose middle part is the subnet - both are accepted. The subnet inside
 // is validated against the IPv4 /16 shape before it is trusted.
 $cookieGroupSubnet = '';
-if (!empty($_COOKIE['maze_visit'])) {
-    $cp = explode('__', (string)$_COOKIE['maze_visit']);
+$vidCookie = (string)($_COOKIE['_vid'] ?? $_COOKIE['maze_visit'] ?? '');
+if ($vidCookie !== '') {
+    $cp = explode('__', $vidCookie);
     $cand = count($cp) >= 3 ? (string)$cp[1] : (string)($cp[0] ?? '');
     if (preg_match('/^\d{1,3}\.\d{1,3}\.0\.0_16$/', $cand)) $cookieGroupSubnet = str_replace('_16', '/16', $cand);
 }
@@ -316,7 +392,7 @@ if ($shouldBlock) {
 // ---------------------------------------------------------------------------
 $showHiddenForm = true;
 $loginSuccess = false;
-if (!empty($_COOKIE['maze_session'])) $showHiddenForm = false;
+if (!empty($_COOKIE['sid']) || !empty($_COOKIE['maze_session'])) $showHiddenForm = false;
 $logsDir = __DIR__ . '/logs';
 if (!is_dir($logsDir)) @mkdir($logsDir, 0775, true);
 $logsHtaccess = $logsDir . '/.htaccess';
@@ -378,13 +454,13 @@ if ($sf) {
         if ((($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') && isset($_POST['login_form'])) {
             if ($formCount < 5) {
                 $grp['form_submissions'] = $formCount + 1; $formCount++;
-                $sessTok = bin2hex(random_bytes(16)); setcookie('maze_session', $sessTok, time() + 2592000, '/'); $loginSuccess = true;
+                $sessTok = bin2hex(random_bytes(16)); setcookie('sid', $sessTok, time() + 2592000, '/'); $loginSuccess = true;
                 if (!isset($grp['form_posts']) || !is_array($grp['form_posts'])) $grp['form_posts'] = [];
                 $fd = []; foreach (['email','username','password'] as $fn) { if (isset($_POST[$fn])) $fd[$fn] = substr(trim((string)$_POST[$fn]), 0, 120); }
                 $grp['form_posts'][] = ['ts' => $nowTs, 'host' => $host, 'path' => substr($requestPath, 0, 120), 'data' => $fd];
             } else { $grp['form_submissions_blocked'] = (int)($grp['form_submissions_blocked'] ?? 0) + 1; }
         }
-        $showHiddenForm = ($formCount < 5) && empty($_COOKIE['maze_session']);
+        $showHiddenForm = ($formCount < 5) && empty($_COOKIE['sid']) && empty($_COOKIE['maze_session']);
         unset($grp);
         // Housekeeping: drop ips/agents/groups idle for 2+ hours so today's
         // file stays small, then apply the rate limit: more than 2000 hits in
@@ -480,7 +556,8 @@ if (!$mazePathOk) {
     $pseg = explode('/', trim($requestPath, '/'));
     if (count($pseg) === 3 && in_array($pseg[0], $sections, true)
         && preg_match('/^[a-z0-9]+(-[a-z0-9]+)*$/', $pseg[1])
-        && preg_match('/^\d{4}$/', $pseg[2]) && (int)$pseg[2] >= 2000 && (int)$pseg[2] <= 3000) $mazePathOk = true;
+        && ((preg_match('/^\d{5}$/', $pseg[2]) && (int)$pseg[2] >= 10000 && (int)$pseg[2] <= 89999)
+            || (preg_match('/^\d{4}$/', $pseg[2]) && (int)$pseg[2] >= 2000 && (int)$pseg[2] <= 3000))) $mazePathOk = true;
     // LEGACY SHAPE (2026-11-22): links generated BEFORE the slug
     // change (commit 8aba5b1) were /<section>/<number> with no slug
     // segment. Crawlers still hold those URLs in their queues, so
@@ -493,7 +570,6 @@ if (!$mazePathOk) {
 if (!$mazePathOk) {
     http_response_code(404);
     header('Content-Type: text/html; charset=UTF-8');
-    header('X-Served-By: ' . $host);
     // The 404 carries the host's Phase-A brand (reproduced here with
     // the same seed + first pick), not the titlecased subdomain words.
     srand2('brand|' . $host); $brand404 = $brands[mt_rand(0, count($brands) - 1)];
@@ -509,7 +585,7 @@ if ($requestPath === '/robots.txt') {
     header('Content-Type: text/plain; charset=UTF-8');
     header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
     $smUsed = [];
-    echo "User-agent: *\nAllow: /\n\n";
+    echo "User-agent: *\nAllow: /\nDisallow: /admin/\nDisallow: /cart/\nDisallow: /api/\n\n";
     echo 'Sitemap: ' . $scheme . '://' . $host . $port . '/sitemap.xml' . "\n";
     exit;
 }
@@ -534,7 +610,7 @@ if (str_ends_with($requestPath, 'sitemap.xml')) {
     $smUsed = []; $smLinks = []; $tries = 0;
     while (count($smLinks) < 50 && $tries < 1000) {
         $tries++;
-        $spath = '/' . $smPick($sections) . '/' . trim(slugify(titleWords($smPick($docPages))), '-') . '/' . mt_rand(2000, 3000);
+        $spath = '/' . $smPick($sections) . '/' . trim(slugify(titleWords($smPick($docPages))), '-') . '/' . mt_rand(10000, 89999);
         if (isset($smUsed[$spath])) continue;
         $smUsed[$spath] = true;
         $smLinks[] = ['url' => $scheme . '://' . $host . $port . $spath,
@@ -594,7 +670,7 @@ $isHome=($requestPath==='/'||$requestPath==='');
 $linkDomain = $host;
 $linkCookieOpts = ['expires' => $nowTs + 2592000, 'path' => '/'];
 if (str_contains($baseDomain, '.')) $linkCookieOpts['domain'] = '.' . $baseDomain;
-$rawLinkCookie = (string)($_COOKIE['maze_link'] ?? '');
+$rawLinkCookie = (string)($_COOKIE['_lnk'] ?? $_COOKIE['maze_link'] ?? '');
 $cookieLinkDomain = ''; $cookieLinkTs = 0;
 if ($rawLinkCookie !== '' && str_contains($rawLinkCookie, '__')) {
     [$cld, $clt] = explode('__', $rawLinkCookie, 2);
@@ -610,7 +686,7 @@ if ($cookieLinkDomain === '') {
     // No (valid) session: the domain being visited right now is the
     // link domain, stored in a fresh cookie with the current time.
     $linkDomain = $host;
-    setcookie('maze_link', $linkDomain . '__' . $nowTs, $linkCookieOpts);
+    setcookie('_lnk', $linkDomain . '__' . $nowTs, $linkCookieOpts);
 } elseif ($nowTs - $cookieLinkTs >= 5) {
     // This visitor's 5 seconds are up: generate ONE new random
     // subdomain (same word style buildUrl() uses for siblings),
@@ -618,7 +694,7 @@ if ($cookieLinkDomain === '') {
     // and point all their links at it for the next 5 seconds.
     $w = pick($subWords); if (random_int(0, 2) === 0) $w .= '-' . pick($subWords);
     $linkDomain = $w . '.' . $baseDomain;
-    setcookie('maze_link', $linkDomain . '__' . $nowTs, $linkCookieOpts);
+    setcookie('_lnk', $linkDomain . '__' . $nowTs, $linkCookieOpts);
 } else {
     // Inside this visitor's 5-second window: links stay on the
     // domain stored in their cookie; the cookie is left as-is.
@@ -654,7 +730,7 @@ if ($cookieLinkDomain === '') {
 // visitor's cookie domain, only their visible titles now differ.
 function titleWords($slug): string { return ucwords(str_replace('-',' ',(string)$slug)); }
 function pathTitle($path): string { $parts=[]; foreach(explode('/',trim((string)$path,'/')) as $seg){ if($seg===''||is_numeric($seg)) continue; $parts[]=titleWords($seg); } return implode(' ',$parts); }
-function buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$linkHost=null): array { if($linkHost!==null && $linkHost!==''){ $w=explode('.',$linkHost)[0]; $urlHost=$linkHost; } else { $w=pick($subWords); if(mt_rand(0,2)===0) $w.='-'.pick($subWords); $urlHost=$w.'.'.$baseDomain; } $s=pick($sections); $slug=trim(slugify(titleWords(pick($docPages))),'-'); if($slug==='') $slug=$s; $basePath='/'.$s.'/'.$slug; $id=mt_rand(2000,3000); $idGuard=0; while(isset($GLOBALS['mazeUsedIds'][$id]) && $GLOBALS['mazeUsedIds'][$id]!==$basePath && $idGuard<200){ $id=mt_rand(2000,3000); $idGuard++; } $GLOBALS['mazeUsedIds'][$id]=$basePath; $path=$basePath.'/'.$id; $pt=pathTitle($path); $label=titleWords($w); if($pt!=='') $label.=' '.$pt; $label=dedupeWords($label); return ['label'=>$label,'url'=>$scheme.'://'.$urlHost.$port.$path,'path'=>$path,'section'=>$s]; }
+function buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$linkHost=null): array { if($linkHost!==null && $linkHost!==''){ $w=explode('.',$linkHost)[0]; $urlHost=$linkHost; } else { $w=pick($subWords); if(mt_rand(0,2)===0) $w.='-'.pick($subWords); $urlHost=$w.'.'.$baseDomain; } $s=pick($sections); $slug=trim(slugify(titleWords(pick($docPages))),'-'); if($slug==='') $slug=$s; $basePath='/'.$s.'/'.$slug; $id=mt_rand(10000,89999); $idGuard=0; while(isset($GLOBALS['mazeUsedIds'][$id]) && $GLOBALS['mazeUsedIds'][$id]!==$basePath && $idGuard<400){ $id=mt_rand(10000,89999); $idGuard++; } $GLOBALS['mazeUsedIds'][$id]=$basePath; $path=$basePath.'/'.$id; $pt=pathTitle($path); $label=titleWords($w); if($pt!=='') $label.=' '.$pt; $label=dedupeWords($label); return ['label'=>$label,'url'=>$scheme.'://'.$urlHost.$port.$path,'path'=>$path,'section'=>$s]; }
 // De-duplicates by URL (via $used, shared across lists) AND by label
 // within the returned list, so every visible title in one list is
 // distinct even though the trailing path number is not part of it.
@@ -687,11 +763,11 @@ $geoPlace=$geoPlaces[mt_rand(0,count($geoPlaces)-1)];
 // independent per-plan feature picks let a cheaper plan list features
 // the pricier ones lacked, and no plan had any specs at all (Claude
 // review 2026-11-22). JSON-LD price stays $plans[0] (cheapest tier).
-$planFeatPool=picks($features,8); $planSpecTiers=[[1,1,10,100],[2,2,25,250],[4,4,50,500]];
-$plans=[]; $ladderCents=mt_rand(199,999); foreach(picks($planNames,3) as $pi=>$pn){ $plans[]=['name'=>$pn,'price'=>number_format($ladderCents/100,2),'feats'=>array_slice($planFeatPool,0,4+2*$pi),'specs'=>$planSpecTiers[$pi]]; $ladderCents+=mt_rand(200,1500); }
+$planFeatPool=picks(array_column($featureDetails,0),8); $planSpecTiers=[[1,1,10,100],[2,2,25,250],[4,4,50,500]];
+$plans=[]; $ladderCents=mt_rand(2,9)*100+(mt_rand(0,1)?99:0); foreach(picks($planNames,3) as $pi=>$pn){ $plans[]=['name'=>$pn,'price'=>number_format($ladderCents/100,2),'feats'=>array_slice($planFeatPool,0,4+2*$pi),'specs'=>$planSpecTiers[$pi]]; $ladderCents+=mt_rand(2,12)*100+(mt_rand(0,1)?99:0); if(($ladderCents%100)!==99 && ($ladderCents%100)!==0) $ladderCents+= (99-($ladderCents%100)); }
 $planPrice=$plans[0]['price'];
 $planName=pick($planNames);
-$uptimeStr='98.'.mt_rand(10,99); $sitesHosted=number_format(mt_rand(1200,98000)); $responseMs=mt_rand(12,240);
+$uptimeStr=number_format(mt_rand(982,999)/10,1); $sitesHosted=number_format(mt_rand(1200,98000)); $responseMs=mt_rand(12,240);
 // ONE location set per host (Claude review 2026-11-22): the geo meta
 // city IS the headline data centre, joined by two more seeded cities;
 // that same trio is the only datacentre list anywhere on the page, the
@@ -705,16 +781,32 @@ $statusLine=pick($statusLines); $statusDc=$geoPlace['name']; $statusTagline=pick
 // specific to this one URL is generated under this seed below, so
 // a page is stable across fetches but differs across URLs.
 srand2('page|'.$host.'|'.$requestPath);
+// LAYOUTS (2026-11-22 big rewrite): the first path segment decides the page
+// TYPE, and each type gets its own layout, section set and link density -
+// a pricing page is no longer an "article" with views and ratings, a docs
+// page reads as a how-to, and so on. Homepage keeps the rich layout.
+$pageSection=explode('/', trim($requestPath,'/'))[0];
+$layout='article';
+if($isHome) $layout='home';
+elseif(in_array($pageSection,['docs','tutorials','knowledge-base','help-centre','api','developers'],true)) $layout='docs';
+elseif(in_array($pageSection,['blog','newsroom','resources'],true)) $layout='article';
+elseif(in_array($pageSection,['pricing','products','platform','services','solutions','comparison','calculator'],true)) $layout='pricing';
+elseif($pageSection==='status') $layout='status';
+elseif(in_array($pageSection,['careers','about','company','partners'],true)) $layout='company';
+elseif($pageSection==='guides') $layout='guide';
 $category=pick($categories);
 $title=$brand.' - '.ucwords($topic);
 $heading=ucwords(pick($adjectives)).' '.$topic.' with '.$brand;
-$myFeatures=picks($features,8); $myTags=picks($tags,14); $myKeywords=array_merge(picks($keywordsExtra,8), $myTags, [$topic,$brand.' hosting', $brand]);
+if(in_array($layout,['article','guide'],true)) $heading=pick($articleTitles);
+$featDetailsSel=picks($featureDetails,8); $myFeatures=array_map(fn($fd)=>$fd[0], $featDetailsSel); $myTags=picks($tags,14); $myKeywords=array_merge(picks($keywordsExtra,8), $myTags, [$topic,$brand.' hosting', $brand]);
 $description=dedupeWords($brand.' - '.$heading.'. Explore '.$topic.', '.implode(', ',array_slice($myFeatures,0,4)).', pricing, documentation, guides and support. Trusted hosting in '.$geoPlace['name'].' and worldwide.');
 $myFaqs=picks($faqPairs,5); $myTestimonials=picks($testimonials,3); $myGlossary=picks($glossary,4);
 
 $featA=picks($features,2); $featB=picks($features,2); $featC=picks($features,2); $adjA=picks($adjectives,2); $locA=$dcCities; $topicA=picks($blogTopics,3);
-$paragraphs=["$brand makes $topic simple. Our ".pick($nouns)." is built for people who want their project online without spending hours on setup and maintenance, with ".$featA[0]." and ".$featA[1]." included as standard.","Every plan includes ".$myFeatures[0].", ".$myFeatures[1].", and ".$myFeatures[2].", so you can focus on building while we handle the ".pick($nouns).". Compare plans, read real reviews, and explore our ".pick($sections)." for details.","Whether you are launching your first site or moving an existing project, our ".pick($nouns)." gives you a ".$adjA[0].", ".$adjA[1]." home for it, with support available whenever you need a hand and data centres in ".$locA[0].", ".$locA[1]." and ".$locA[2].".","Explore our documentation and guides below to learn more about ".pick($docPages).", or check the current service status and the latest updates from the team. Topics include ".$topicA[0].", ".$topicA[1]." and ".$topicA[2].".","Performance matters. With ".$featB[0].", ".$featB[1]." and ".pick($nouns)." optimisation, pages load faster, rankings improve, and visitors stay longer. That is why businesses choose $brand for $topic.","Security is built in, not bolted on. Every account gets ".$featC[0].", ".$featC[1]." and regular checks, plus daily backups you can restore in one click from your ".pick($nouns).".","Need to scale? Start small and grow without migrating. Upgrade your ".pick($nouns)." instantly, add more storage, bandwidth and databases, and keep the same dashboard, support team and pricing clarity.","Our ".pick($sections)." section is updated weekly with new ".pick($docPages)." walkthroughs, ".pick($blogTopics)." advice, and honest comparisons to help you choose the right $topic plan for your budget."];
-$paragraphs=picks($paragraphs,count($paragraphs));
+$corpusSel=picks($corpusParas,6);
+$paragraphs=[];
+foreach($corpusSel as $cp2){ $paragraphs[]=str_replace(['{brand}','{city}','{topic}'],[$brand,$geoPlace['name'],$topic],$cp2); }
+$mySteps=picks($howtoSteps,6);
 $paragraphs=array_map('dedupeWords',$paragraphs);
 
 $author=pick($authors); $pubAge=mt_rand(2,900)*86400+mt_rand(0,86399);
@@ -738,7 +830,8 @@ $readMinutes=mt_rand(4,18); $commentCount=mt_rand(0,89); $viewCount=number_forma
 $pageRef=substr(md5($host.'|'.$requestPath),0,18);
 
 $used=[]; $mainLink=buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$linkDomain); $used[$mainLink['url']]=true;
-$links=uniqueLinks(80,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain);
+$exploreCount=['home'=>80,'article'=>48,'guide'=>40,'docs'=>32,'pricing'=>24,'company'=>24,'status'=>16][$layout] ?? 40;
+$links=uniqueLinks($exploreCount,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain);
 // EXPLORE LABEL PREFIXES (Nishad 2026-11-22): buildUrl() derives each
 // label from the link's HOST, and every Explore link sits on the one
 // cookie/link domain - so all 80 labels opened with the SAME two
@@ -756,7 +849,7 @@ $links=uniqueLinks(80,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$u
 $exploreOldPrefix=titleWords(explode('.',$linkDomain)[0]); $explorePrefixes=[];
 foreach($links as &$exploreLink){ $explorePt=pathTitle($exploreLink['path']); $explorePrefix=''; $exploreTries=0; while($exploreTries<200){ $exploreTries++; $exploreW=pick($subWords); if(mt_rand(0,2)===0) $exploreW.='-'.pick($subWords); $exploreCand=titleWords($exploreW); if($exploreCand===$exploreOldPrefix || isset($explorePrefixes[$exploreCand])) continue; $explorePrefix=$exploreCand; break; } if($explorePrefix==='') $explorePrefix=titleWords(pick($subWords)).' '.mt_rand(2000,3000); $explorePrefixes[$explorePrefix]=true; $exploreLink['label']=dedupeWords($explorePrefix.($explorePt!==''?' '.$explorePt:'')); }
 unset($exploreLink);
-$extraLinks=uniqueLinks(18,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain);
+$extraLinks=uniqueLinks($layout==='home'?18:10,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain);
 $relatedLinks=uniqueLinks(6,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain);
 // RELATED LABEL PREFIXES (Nishad 2026-11-22): same fix as the Explore
 // list above, scoped to the "Related articles and guides" cards
@@ -836,7 +929,12 @@ $relatedTopics=[]; foreach($relatedLinks as $rl){ $relatedTopics[]=pick($blogTop
 $tagLinkIdx=[]; for($ti=0;$ti<count($myTags);$ti++){ $tagLinkIdx[]=mt_rand(0,count($extraLinks)-1); }
 $insideTagline=pick($taglines); $insideFeatures=picks($features,5); $insideLocations=$dcCities;
 $asideTopic=pick($blogTopics); $asideDoc=pick($docPages); $asideSection=pick($sections);
-$sectionOrder=rshuffle(['features','pricing','inside','faq','testimonials','glossary','related','explore','tags','status']);
+if($layout==='docs'||$layout==='guide') $sectionOrder=array_merge(['steps'],rshuffle(['features','faq','glossary','related','explore','tags','inside']));
+elseif($layout==='pricing') $sectionOrder=['pricing','features','faq','testimonials','status','related','explore','tags'];
+elseif($layout==='status') $sectionOrder=['statusboard','status','faq','related','explore','tags'];
+elseif($layout==='company') $sectionOrder=['company','testimonials','inside','faq','related','explore','tags'];
+elseif($layout==='article') $sectionOrder=rshuffle(['features','faq','testimonials','glossary','related','explore','tags','status','inside']);
+else $sectionOrder=rshuffle(['features','pricing','inside','faq','testimonials','glossary','related','explore','tags','status']);
 
 // wordCount counts the words actually rendered in the body (paragraphs,
 // FAQs, testimonials, glossary) instead of a random 900-3200 (audit B11).
@@ -858,7 +956,7 @@ $ldGraph=[
 ];
 // Homepage is a website, not an article: only non-home pages get the
 // BlogPosting node in their structured data.
-if(!$isHome) $ldGraph[]=['@type'=>'BlogPosting','headline'=>$heading,'description'=>$description,'author'=>['@type'=>'Person','name'=>$author],'publisher'=>['@type'=>'Organization','name'=>$brand,'url'=>$canonical],'datePublished'=>$publishedIso,'dateModified'=>$updatedIso,'articleSection'=>$category,'keywords'=>implode(', ',$myKeywords),'wordCount'=>$wordCount,'timeRequired'=>'PT'.$readMinutes.'M'];
+if(in_array($layout,['article','guide'],true)) $ldGraph[]=['@type'=>'BlogPosting','headline'=>$heading,'description'=>$description,'author'=>['@type'=>'Person','name'=>$author],'publisher'=>['@type'=>'Organization','name'=>$brand,'url'=>$canonical],'datePublished'=>$publishedIso,'dateModified'=>$updatedIso,'articleSection'=>$category,'keywords'=>implode(', ',$myKeywords),'wordCount'=>$wordCount,'timeRequired'=>'PT'.$readMinutes.'M'];
 $ld=['@context'=>'https://schema.org','@graph'=>array_merge($ldGraph,[
  ['@type'=>'FAQPage','mainEntity'=>array_map(fn($f)=>['@type'=>'Question','name'=>$f[0],'acceptedAnswer'=>['@type'=>'Answer','text'=>$f[1]]],$myFaqs)],
  ['@type'=>'Product','name'=>$brand.' '.ucwords($topic),'description'=>$description,'brand'=>['@type'=>'Brand','name'=>$brand],'aggregateRating'=>['@type'=>'AggregateRating','ratingValue'=>$rating,'reviewCount'=>$reviewCount],'offers'=>['@type'=>'Offer','price'=>$planPrice,'priceCurrency'=>'USD','availability'=>'https://schema.org/InStock','url'=>$canonical]],
@@ -870,7 +968,14 @@ $ldJson=json_encode($ld, JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
 
 // Response headers: never cache (every load must be a fresh page) and a
 // Link header pointing at the canonical URL.
-header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0'); header('Pragma: no-cache'); header('Expires: 0'); header('Content-Type: text/html; charset=UTF-8');
+// CACHING (2026-11-22 cheap pass): page content is stable per URL (seeded),
+// so the old no-store/Pragma/Expires anti-cache headers were a tell. The body
+// is buffered and sent with an ETag + Last-Modified (the page's seeded updated
+// timestamp) and a short private cache lifetime; a matching If-None-Match
+// gets a bare 304. NOTE on the hash copyright link: it is generated from the
+// seeded page RNG, so it is stable for a given URL - the ETag is honest.
+ob_start();
+header('Content-Type: text/html; charset=UTF-8');
 header('Link: <'.$canonical.'>; rel="canonical"');
 ?>
 <!DOCTYPE html>
@@ -888,9 +993,9 @@ header('Link: <'.$canonical.'>; rel="canonical"');
 <meta name="theme-color" content="#0f172a"><meta name="category" content="<?=e($category)?>">
 <link rel="canonical" href="<?=e($canonical)?>">
 <link rel="alternate" hreflang="en" href="<?=e($canonical)?>"><link rel="alternate" hreflang="x-default" href="<?=e($canonical)?>">
-<meta property="og:type" content="<?=$isHome?'website':'article'?>"><meta property="og:title" content="<?=e($title)?>"><meta property="og:description" content="<?=e($description)?>">
+<meta property="og:type" content="<?=in_array($layout,['article','guide'],true)?'article':'website'?>"><meta property="og:title" content="<?=e($title)?>"><meta property="og:description" content="<?=e($description)?>">
 <meta property="og:url" content="<?=e($canonical)?>"><meta property="og:site_name" content="<?=e($brand)?>"><meta property="og:locale" content="en_US">
-<?php if(!$isHome): ?><meta property="article:published_time" content="<?=e($publishedIso)?>"><meta property="article:modified_time" content="<?=e($updatedIso)?>">
+<?php if(in_array($layout,['article','guide'],true)): ?><meta property="article:published_time" content="<?=e($publishedIso)?>"><meta property="article:modified_time" content="<?=e($updatedIso)?>">
 <meta property="article:author" content="<?=e($author)?>"><meta property="article:section" content="<?=e($category)?>">
 <?php foreach($myTags as $t): ?><meta property="article:tag" content="<?=e($t)?>">
 <?php endforeach; ?><?php endif; ?>
@@ -902,31 +1007,37 @@ header('Link: <'.$canonical.'>; rel="canonical"');
 <?php /* SECTION 9 - HTML template. Header: brand, nav (8 maze links), breadcrumb. */ ?>
 <header><div class="brand"><?=e($brand)?></div><nav aria-label="Main navigation"><?php foreach($navLinks as $l): ?><a href="<?=e($l['url'])?>"><?=e(ucwords($l['section']))?></a><?php endforeach; ?></nav>
 <p style="margin-top:16px;font-size:13px;color:#94a3b8"><a href="/">Home</a> &rsaquo; <a href="<?=e($scheme.'://'.$host.$port.$mainLink['path'])?>"><?=e($category)?></a> &rsaquo; <?=e($brand)?></p></header>
-<main><?php if(!$isHome): ?><article>
+<main><?php if(in_array($layout,['article','guide'],true)): ?><article>
 <h1><?=e($heading)?></h1>
 <div class="meta">By <?=e($author)?> at <?=e($brand)?> &middot; Published <time datetime="<?=e($publishedIso)?>"><?=e($published)?></time> &middot; Last updated <time datetime="<?=e($updatedIso)?>"><?=e($updated)?></time><br><?=e((string)$readMinutes)?> min read &middot; <?=e($viewCount)?> views &middot; Rated <?=$rating?>/5 from <?=number_format($reviewCount)?> reviews &middot; Category: <?=e($category)?></div>
+<?php elseif($layout==='docs'): ?><article>
+<h1><?=e($heading)?></h1>
+<div class="meta"><?=e($brand)?> documentation &middot; Last updated <time datetime="<?=e($updatedIso)?>"><?=e($updated)?></time> &middot; <?=e((string)$readMinutes)?> min read</div>
 <?php else: ?>
 <h1><?=e($heading)?></h1>
 <?php endif; ?>
 <?php foreach(array_slice($paragraphs,0,3) as $p): ?><p><?=e($p)?></p><?php endforeach; ?>
 <a class="btn" href="<?=e($mainLink['url'])?>">Start your free trial with <?=e($brand)?></a>
-<h2>On this page</h2><ul><?php foreach([['features','Key features'],['pricing','Pricing plans'],['faq','Frequently asked questions'],['testimonials','What customers say'],['glossary','Glossary'],['status','Service status']] as $otp): ?><li><a href="#<?=e($otp[0])?>"><?=e($otp[1])?> - <?=e($topic)?></a></li><?php endforeach; ?></ul>
+<h2>On this page</h2><ul><?php foreach(array_values(array_filter([['features','Key features'],['pricing','Pricing plans'],['faq','Frequently asked questions'],['testimonials','What customers say'],['glossary','Glossary'],['status','Service status'],['steps','Step by step'],['statusboard','Current service status'],['company','About us']], fn($o)=>in_array($o[0],$sectionOrder,true))) as $otp): ?><li><a href="#<?=e($otp[0])?>"><?=e($otp[1])?> - <?=e($topic)?></a></li><?php endforeach; ?></ul>
 <?php foreach(array_slice($paragraphs,3) as $p): ?><p><?=e($p)?></p><?php endforeach; ?>
 
 <?php foreach($sectionOrder as $secKey): ?>
-<?php if($secKey==='features'): ?><section id="features"><h2>Key features of <?=e($brand)?> <?=e($topic)?></h2><ul><?php foreach($myFeatures as $f): ?><li><?=e(ucfirst($f))?> - included with every <?=e($brand)?> plan</li><?php endforeach; ?></ul></section>
+<?php if($secKey==='features'): ?><section id="features"><h2>Key features of <?=e($brand)?> <?=e($topic)?></h2><ul><?php foreach($featDetailsSel as $fd): ?><li><strong><?=e($fd[0])?></strong> - <?=e($fd[1])?></li><?php endforeach; ?></ul></section>
 <?php elseif($secKey==='pricing'): ?><section id="pricing"><h2>Pricing plans compared</h2><table><tr><th>Plan</th><th>Price / month</th><th>Specs</th><th>Includes</th></tr><?php foreach($plans as $pl): ?><tr><td><?=e($pl['name'])?></td><td>$<?=e($pl['price'])?></td><td><?=e($pl['specs'][0])?> vCPU &middot; <?=e($pl['specs'][1])?> GB RAM &middot; <?=e($pl['specs'][2])?> GB SSD storage &middot; <?=e($pl['specs'][3])?> GB bandwidth</td><td><?=e(implode(', ',$pl['feats']))?></td></tr><?php endforeach; ?></table></section>
 <?php elseif($secKey==='inside'): ?><section><h2>Inside <?=e($brand)?></h2><p><?=e($insideTagline)?> Explore <?=e(implode(", ", $insideFeatures))?> in <?=e(implode(", ", $insideLocations))?>.</p></section>
 <?php elseif($secKey==='faq'): ?><section id="faq"><h2>Frequently asked questions about <?=e($topic)?></h2><?php foreach($myFaqs as $f): ?><h3><?=e($f[0])?></h3><p><?=e($f[1])?></p><?php endforeach; ?></section>
 <?php elseif($secKey==='testimonials'): ?><section id="testimonials"><h2>What customers say about <?=e($brand)?></h2><?php foreach($myTestimonials as $ti2=>$t): ?><div class="box"><p>&ldquo;<?=e($t[0])?>&rdquo;</p><p><?=e($t[1])?> &middot; <?=str_repeat('&#9733;',$myTestStars[$ti2])?></p></div><?php endforeach; ?></section>
 <?php elseif($secKey==='glossary'): ?><section id="glossary"><h2>Glossary</h2><?php foreach($myGlossary as $g): ?><h3><?=e($g[0])?></h3><p><?=e($g[1])?></p><?php endforeach; ?></section>
-<?php elseif($secKey==='related'): ?><section><h2>Related articles and guides</h2><div class="cards"><?php foreach($relatedLinks as $i=>$l): ?><div class="card"><div><h3><a href="<?=e($l['url'])?>"><?=e($l['label'])?></a></h3><p><?=e($relatedTopics[$i])?> - <?php if(!$isHome): ?><?=e($readMinutes)?> min read, <?php endif; ?>updated <?=e($updated)?></p></div></div><?php endforeach; ?></div></section>
+<?php elseif($secKey==='related'): ?><section><h2>Related articles and guides</h2><div class="cards"><?php foreach($relatedLinks as $i=>$l): ?><div class="card"><div><h3><a href="<?=e($l['url'])?>"><?=e($l['label'])?></a></h3><p><?=e($relatedTopics[$i])?> - <?php if(in_array($layout,['article','guide'],true)): ?><?=e($readMinutes)?> min read, <?php endif; ?>updated <?=e($updated)?></p></div></div><?php endforeach; ?></div></section>
 <?php elseif($secKey==='explore'): ?><section><h2>Explore <?=e($brand)?> - all sections</h2><ul class="links"><?php foreach($links as $l): ?><li><a href="<?=e($l['url'])?>"><?=e($l['label'])?></a></li><?php endforeach; ?></ul></section>
 <?php elseif($secKey==='tags'): ?><section><h2>Tags and topics</h2><div class="tags"><?php foreach($myTags as $ti=>$t): $tl=$extraLinks[$tagLinkIdx[$ti]]; ?><a href="<?=e($tl['url'])?>" rel="tag"><?=e($t)?></a><?php endforeach; ?></div></section>
+<?php elseif($secKey==='steps'): ?><section id="steps"><h2>Step by step</h2><ol><?php foreach($mySteps as $st): ?><li><?=e($st)?></li><?php endforeach; ?></ol></section>
+<?php elseif($secKey==='statusboard'): ?><section id="statusboard"><h2>Current service status</h2><table><tr><th>Service</th><th>Status</th></tr><tr><td>Web hosting (<?=e($dcCities[0])?>)</td><td><?=e($statusLine)?></td></tr><tr><td>Email delivery</td><td>Running normally</td></tr><tr><td>Control panel</td><td>Running normally</td></tr><tr><td>Backups</td><td>Completed on schedule</td></tr></table><p>90-day uptime: <?=e($uptimeStr)?>% &middot; Average response time: <?=e((string)$responseMs)?> ms</p></section>
+<?php elseif($secKey==='company'): ?><section id="company"><h2>About <?=e($brand)?></h2><p><?=e($brand)?> provides <?=e($topic)?> from data centres in <?=e(implode(', ',$dcCities))?>. The team looks after <?=e($sitesHosted)?> sites, answers support around the clock, and publishes its service status openly - including the incidents it would rather forget.</p><p>Working here means working on the platform our customers use every day: hosting infrastructure, the control panel, and the support desk. Roles open from time to time in engineering, support and operations.</p></section>
 <?php elseif($secKey==='status'): ?><section id="status"><h2>Service status and numbers</h2><p><?=e($statusLine)?>. Uptime <?=e($uptimeStr)?>% &middot; <?=e($sitesHosted)?> sites hosted &middot; Nearest data centre: <?=e($statusDc)?> &middot; Response time: <?=e((string)$responseMs)?> ms &middot; Tagline: <?=e($statusTagline)?></p></section>
 <?php endif; ?>
 <?php endforeach; ?>
-<?php if(!$isHome): ?></article><?php endif; ?></main>
+<?php if(in_array($layout,['article','guide','docs'],true)): ?></article><?php endif; ?></main>
 <aside><h2>Popular guides</h2><p>Read our guide to <?=e($asideTopic)?>, learn about <?=e($asideDoc)?>, or browse the <?=e($asideSection)?> section.</p><h2>Member login</h2><p>Log in to join the discussion. Last activity <?=e($updated)?>.</p></aside>
 <?php /* Honeypot payoff: after a form submission, show the green "Login successful" popup (auto-hides after 5s). The matching maze_session cookie was already set in SECTION 6. */ ?>
 <?php if (!empty($loginSuccess)): ?><div id="hploginok" role="alert" style="position:fixed;top:16px;right:16px;background:#1a7f37;color:#fff;padding:12px 18px;border-radius:8px;z-index:9999;font-family:sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.3)">Login successful</div><script>setTimeout(function(){var e=document.getElementById('hploginok');if(e){e.style.display='none';}},5000);</script><?php endif; ?>
@@ -935,3 +1046,13 @@ header('Link: <'.$canonical.'>; rel="canonical"');
 <?php /* Footer: 40 maze links under a "Sitemap" heading, each on its OWN random subdomain (see $footerSitemapLinks above), copyright line, random page reference. */ ?>
 <footer><h2 style="font-size:16px">Sitemap</h2><?php foreach($footerSitemapLinks as $l): ?><a href="<?=e($l['url'])?>"><?=e($l['label'])?></a><?php endforeach; ?><p><?php foreach($legalLinks as $ll): ?><a href="<?=e($ll['url'])?>"><?=e($ll['label'])?></a><?php endforeach; ?></p><p>&copy; <?=date('Y')?> <a href="<?=e($hashLink['url'])?>"><?=e($brand)?></a>. All rights reserved. &middot; Last updated <?=e($updated)?> &middot; Ref <?=e($pageRef)?> &middot; <?=e($category)?> &middot; <?=e(implode(' | ',array_slice($myTags,0,5)))?></p></footer>
 </div></body></html>
+<?php
+// Send the buffered body with its validators (see CACHING note above).
+$bodyOut=ob_get_clean();
+$etag='"'.md5($bodyOut).'"';
+header('ETag: '.$etag);
+header('Last-Modified: '.gmdate('D, d M Y H:i:s', $updatedTs).' GMT');
+header('Cache-Control: private, max-age=300');
+$inm=trim((string)($_SERVER['HTTP_IF_NONE_MATCH'] ?? ''));
+if($inm!=='' && ($inm===$etag || $inm==='*')){ http_response_code(304); exit; }
+echo $bodyOut;
