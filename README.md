@@ -31,6 +31,10 @@ in the code.
   Banned hits are still tracked in the group's daily file.
 - **Rate limit raised**: 200 → **2000** hits per 1-hour window (per IP or
   per group) before the 10-minute ban — bots get more maze before the wall.
+- **Old archive removed**: the `old-files/` folder (the archived original
+  single-file tracker) was deleted 2026-11-22. The project keeps only
+  `index.php` + the root `.htaccess`; the script creates `logs/` and its
+  deny-all `.htaccess` by itself when missing.
 
 ## Where things live
 
@@ -40,7 +44,6 @@ in the code.
 | Inside container | `/home/container/public_html/index.php` (PHP binary: `/usr/bin/php83`) |
 | Daily logs | `public_html/logs/<group subnet>_<YYYY-MM-DD>.json` (deny-all `.htaccess` in that folder) |
 | Global ban file | `public_html/.maze-bans.json` |
-| Archived old tracker | `public_html/old-files/` (the original single-file `.maze-visitors.json`, kept for review) |
 | Backups | `public_html/index.php.bak-<label>-<timestamp>` beside the script |
 | This README | volume root: `…/64ebbbde-c8b1-4191-bc4b-954e090bd351/MAZE-README.md` |
 
@@ -92,16 +95,6 @@ Deny from all
 
 This blocks all web access to the daily log files. (The script also
 re-creates this file by itself if it is missing — see §6 in the code.)
-
-**3. Create a file named `.htaccess` inside `public_html/old-files/` and paste this:**
-
-```apache
-Require all denied
-Deny from all
-```
-
-Same as the logs one — it blocks web access to the archived old tracker
-file kept in that folder.
 
 Access from Cleo's VM (direct SSH is blocked):
 `ssh -o ProxyCommand="python3 /home/hatch/workspace/proxyconnect.py %h %p" ubuntu@100.125.66.28`, then `sudo docker …`.
