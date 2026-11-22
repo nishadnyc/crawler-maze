@@ -24,18 +24,17 @@ jobs:
 
       - name: Download files from server
         run: |
-          mkdir -p ./public_html
           ssh "${{ vars.SERVER_USER }}@${{ vars.SERVER_HOST }}" \
             "sudo tar -czf - -C ${{ vars.SERVER_PATH }} ." \
-            | tar -xzf - -C ./public_html
+            | tar -xzf - -C .
 
       - name: Commit and push changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@://github.com"
-          git add ./public_html
+          git add .
           if ! git diff --staged --quiet; then
-            git commit -m "Sync public_html from server"
+            git commit -m "Sync site files from server"
             git push origin main
           else
             echo "No changes to commit."
