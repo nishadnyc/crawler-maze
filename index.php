@@ -130,7 +130,11 @@ $locations=['New York','Chicago','Dallas','Los Angeles','Seattle','Toronto','Lon
 // Geo meta pairs: placename and region code are picked TOGETHER from one
 // entry so they can never disagree (old code said US-NY for Singapore).
 $geoPlaces=[['name'=>'New York','region'=>'US-NY'],['name'=>'Chicago','region'=>'US-IL'],['name'=>'Dallas','region'=>'US-TX'],['name'=>'Los Angeles','region'=>'US-CA'],['name'=>'Seattle','region'=>'US-WA'],['name'=>'Toronto','region'=>'CA-ON'],['name'=>'London','region'=>'GB-LND'],['name'=>'Frankfurt','region'=>'DE-HE'],['name'=>'Amsterdam','region'=>'NL-NH'],['name'=>'Paris','region'=>'FR-75'],['name'=>'Singapore','region'=>'SG-01'],['name'=>'Tokyo','region'=>'JP-13'],['name'=>'Sydney','region'=>'AU-NSW'],['name'=>'Mumbai','region'=>'IN-MH']];
-$statusLines=['All systems operational','No incidents reported today','All services green across all regions','Running smoothly with normal response times'];
+// Status wording must stay coherent with the ~98.x% uptime printed next
+// to it (Claude review 2026-11-22): 98% uptime is ~6 days of downtime a
+// year, so the status line must not claim perfection ("All systems
+// operational" / "all services green") in the same breath.
+$statusLines=['All core services running normally','No major incidents reported today','Services running normally across all regions','Running smoothly with normal response times'];
 $subWords=['support','docs','portal','status','cloud','panel','api','help','blog','secure','account','billing','dashboard','community','developer','resources','guides','updates','service','hosting','server','website','domain','email','backup','security','network','storage','database','monitor','deploy','launch','build','create','manage','control','hub','centre','zone','lab','works','studio'];
 $authors=['Alex Morgan','Sarah Lee','David Chen','Emma Wilson','James Taylor','Priya Patel','Michael Brown','Lisa Garcia','Anna Kim','Mark Johnson','Sophie Turner','Ryan Clark','Nina Shah','Oliver Reed','Grace Liu','Ben Carter'];
 $categories=['Hosting Guides','Cloud Technology','Web Development','Website Security','Performance','Business Growth','Tutorials','News & Updates','Case Studies','Product Updates'];
@@ -160,12 +164,15 @@ $topicSuf=['hosting','management','infrastructure','deployment','automation','mo
 foreach($topicPre as $tp){ foreach(picks($topicSuf,4) as $ts){ $topics[]=$tp.' '.$ts; } } $topics=array_values(array_unique($topics));
 foreach($adjectives as $a){ foreach($nouns as $n){ $features[]=$a.' '.$n.' management'; $features[]=$a.' '.$n.' protection'; } } $features=array_values(array_unique($features));
 foreach($sections as $s){ foreach(['guide','hub','centre','portal','lab','index','overview'] as $x){ $docPages[]=$s.'-'.$x; } } $docPages=array_values(array_unique($docPages));
-foreach($blogTopics as $b){ foreach(['in 2024','in 2025','in 2026','for beginners','for businesses','step by step','explained simply','with examples','like a pro','on a budget'] as $x){ $blogTopics[]=$b.' '.$x; } } $blogTopics=array_values(array_unique($blogTopics));
+// No year suffixes ('in 2024/2025/2026') on blog topics: a year baked
+// into an article title reads as template-slot leakage / stale content
+// next to the page's own seeded dates (Claude review 2026-11-22).
+foreach($blogTopics as $b){ foreach(['for beginners','for businesses','step by step','explained simply','with examples','like a pro','on a budget'] as $x){ $blogTopics[]=$b.' '.$x; } } $blogTopics=array_values(array_unique($blogTopics));
 foreach($subWords as $w){ foreach(['hub','lab','zone','base','port','works','online','central','direct','plus'] as $x){ if(mt_rand(0,3)===0) $subWords[]=$w.'-'.$x; } } $subWords=array_values(array_unique($subWords));
 $firstNames=['Alex','Sarah','David','Emma','James','Priya','Michael','Lisa','Anna','Mark','Sophie','Ryan','Nina','Oliver','Grace','Ben','Tom','Kate','Sam','Mia','Leo','Zoe','Adam','Eva','Chris','Dana','Paul','Ruth','Hugo','Ivy'];
 $lastNames=['Morgan','Lee','Chen','Wilson','Taylor','Patel','Brown','Garcia','Kim','Johnson','Turner','Clark','Shah','Reed','Liu','Carter','Moore','Hall','Young','King','Scott','Green','Baker','Adams','Nelson','Hill','Ramirez','Campbell','Mitchell','Carter'];
 foreach($firstNames as $fn){ $authors[]=$fn.' '.pick($lastNames); } $authors=array_values(array_unique($authors));
-foreach($tags as $tg){ foreach(['guide','tips','tutorial','checklist','best practices','for beginners','advanced','2026'] as $x){ $tags[]=$tg.' '.$x; } } $tags=array_values(array_unique($tags));
+foreach($tags as $tg){ foreach(['guide','tips','tutorial','checklist','best practices','for beginners','advanced'] as $x){ $tags[]=$tg.' '.$x; } } $tags=array_values(array_unique($tags));
 foreach($faqPairs as $f){} // keep base, combos generated at render from templates below
 $sentenceStarters=['For teams of every size','Whether you are just starting out','From day one','In practice','For most websites','When speed matters','For growing businesses','With the right setup','For developers and creators alike','In a crowded market','For anyone moving online','When reliability counts'];
 $sentenceMiddles=['the right hosting choice saves time, money and stress','a fast server changes how visitors feel about your brand','good infrastructure quietly does the heavy lifting','clear pricing and honest support make all the difference','automation removes the boring parts of running a site','security and backups protect months of hard work','scaling should be a button, not a migration project','monitoring catches problems before your customers do'];
@@ -647,7 +654,7 @@ if ($cookieLinkDomain === '') {
 // visitor's cookie domain, only their visible titles now differ.
 function titleWords($slug): string { return ucwords(str_replace('-',' ',(string)$slug)); }
 function pathTitle($path): string { $parts=[]; foreach(explode('/',trim((string)$path,'/')) as $seg){ if($seg===''||is_numeric($seg)) continue; $parts[]=titleWords($seg); } return implode(' ',$parts); }
-function buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$linkHost=null): array { if($linkHost!==null && $linkHost!==''){ $w=explode('.',$linkHost)[0]; $urlHost=$linkHost; } else { $w=pick($subWords); if(mt_rand(0,2)===0) $w.='-'.pick($subWords); $urlHost=$w.'.'.$baseDomain; } $s=pick($sections); $slug=trim(slugify(titleWords(pick($docPages))),'-'); if($slug==='') $slug=$s; $path='/'.$s.'/'.$slug.'/'.mt_rand(2000,3000); $pt=pathTitle($path); $label=titleWords($w); if($pt!=='') $label.=' '.$pt; $label=dedupeWords($label); return ['label'=>$label,'url'=>$scheme.'://'.$urlHost.$port.$path,'path'=>$path,'section'=>$s]; }
+function buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$linkHost=null): array { if($linkHost!==null && $linkHost!==''){ $w=explode('.',$linkHost)[0]; $urlHost=$linkHost; } else { $w=pick($subWords); if(mt_rand(0,2)===0) $w.='-'.pick($subWords); $urlHost=$w.'.'.$baseDomain; } $s=pick($sections); $slug=trim(slugify(titleWords(pick($docPages))),'-'); if($slug==='') $slug=$s; $basePath='/'.$s.'/'.$slug; $id=mt_rand(2000,3000); $idGuard=0; while(isset($GLOBALS['mazeUsedIds'][$id]) && $GLOBALS['mazeUsedIds'][$id]!==$basePath && $idGuard<200){ $id=mt_rand(2000,3000); $idGuard++; } $GLOBALS['mazeUsedIds'][$id]=$basePath; $path=$basePath.'/'.$id; $pt=pathTitle($path); $label=titleWords($w); if($pt!=='') $label.=' '.$pt; $label=dedupeWords($label); return ['label'=>$label,'url'=>$scheme.'://'.$urlHost.$port.$path,'path'=>$path,'section'=>$s]; }
 // De-duplicates by URL (via $used, shared across lists) AND by label
 // within the returned list, so every visible title in one list is
 // distinct even though the trailing path number is not part of it.
@@ -673,12 +680,27 @@ srand2('brand|'.$host);
 $brand=pick($brands); $topic=pick($topics);
 $accent=pick(['#38bdf8','#34d399','#fbbf24','#f472b6','#a78bfa','#fb923c']);
 $geoPlace=$geoPlaces[mt_rand(0,count($geoPlaces)-1)];
-$plans=[]; $ladderCents=mt_rand(199,999); foreach(picks($planNames,3) as $pn){ $plans[]=['name'=>$pn,'price'=>number_format($ladderCents/100,2),'feats'=>picks($features,4)]; $ladderCents+=mt_rand(200,1500); }
+// Plan ladder: prices ascend by tier (as before), and now the feature
+// lists are CUMULATIVE slices of one shared pool (tier 1 gets the first
+// 4, tier 2 the first 6, tier 3 all 8) with concrete per-tier specs
+// (vCPU, RAM GB, SSD GB, bandwidth GB) ascending alongside - the old
+// independent per-plan feature picks let a cheaper plan list features
+// the pricier ones lacked, and no plan had any specs at all (Claude
+// review 2026-11-22). JSON-LD price stays $plans[0] (cheapest tier).
+$planFeatPool=picks($features,8); $planSpecTiers=[[1,1,10,100],[2,2,25,250],[4,4,50,500]];
+$plans=[]; $ladderCents=mt_rand(199,999); foreach(picks($planNames,3) as $pi=>$pn){ $plans[]=['name'=>$pn,'price'=>number_format($ladderCents/100,2),'feats'=>array_slice($planFeatPool,0,4+2*$pi),'specs'=>$planSpecTiers[$pi]]; $ladderCents+=mt_rand(200,1500); }
 $planPrice=$plans[0]['price'];
-$includedPlan=$plans[1]['name'];
 $planName=pick($planNames);
 $uptimeStr='98.'.mt_rand(10,99); $sitesHosted=number_format(mt_rand(1200,98000)); $responseMs=mt_rand(12,240);
-$statusLine=pick($statusLines); $statusDc=pick($locations); $statusTagline=pick($taglines);
+// ONE location set per host (Claude review 2026-11-22): the geo meta
+// city IS the headline data centre, joined by two more seeded cities;
+// that same trio is the only datacentre list anywhere on the page, the
+// description names the geo city, and the status section's "nearest
+// data centre" is the geo city too. The old code rolled each of those
+// independently, so one page could claim Chicago, New York and a
+// Sydney/Chicago/Tokyo DC list all at once.
+$dcOthers=picks(array_values(array_diff($locations,[$geoPlace['name']])),2); $dcCities=array_merge([$geoPlace['name']],$dcOthers);
+$statusLine=pick($statusLines); $statusDc=$geoPlace['name']; $statusTagline=pick($taglines);
 // Phase B - PAGE CONTENT (seed 'page|<host>|<path>'): everything
 // specific to this one URL is generated under this seed below, so
 // a page is stable across fetches but differs across URLs.
@@ -686,16 +708,25 @@ srand2('page|'.$host.'|'.$requestPath);
 $category=pick($categories);
 $title=$brand.' - '.ucwords($topic);
 $heading=ucwords(pick($adjectives)).' '.$topic.' with '.$brand;
-$myFeatures=picks($features,8); $myTags=picks($tags,14); $myKeywords=array_merge(picks($keywordsExtra,8), $myTags, [$topic,$brand.' hosting', $currentName]);
-$description=dedupeWords($brand.' - '.$heading.'. Explore '.$topic.', '.implode(', ',array_slice($myFeatures,0,4)).', pricing, documentation, guides and support. Trusted hosting in '.pick($locations).' and worldwide.');
+$myFeatures=picks($features,8); $myTags=picks($tags,14); $myKeywords=array_merge(picks($keywordsExtra,8), $myTags, [$topic,$brand.' hosting', $brand]);
+$description=dedupeWords($brand.' - '.$heading.'. Explore '.$topic.', '.implode(', ',array_slice($myFeatures,0,4)).', pricing, documentation, guides and support. Trusted hosting in '.$geoPlace['name'].' and worldwide.');
 $myFaqs=picks($faqPairs,5); $myTestimonials=picks($testimonials,3); $myGlossary=picks($glossary,4);
 
-$featA=picks($features,2); $featB=picks($features,2); $featC=picks($features,2); $adjA=picks($adjectives,2); $locA=picks($locations,3); $topicA=picks($blogTopics,3);
+$featA=picks($features,2); $featB=picks($features,2); $featC=picks($features,2); $adjA=picks($adjectives,2); $locA=$dcCities; $topicA=picks($blogTopics,3);
 $paragraphs=["$brand makes $topic simple. Our ".pick($nouns)." is built for people who want their project online without spending hours on setup and maintenance, with ".$featA[0]." and ".$featA[1]." included as standard.","Every plan includes ".$myFeatures[0].", ".$myFeatures[1].", and ".$myFeatures[2].", so you can focus on building while we handle the ".pick($nouns).". Compare plans, read real reviews, and explore our ".pick($sections)." for details.","Whether you are launching your first site or moving an existing project, our ".pick($nouns)." gives you a ".$adjA[0].", ".$adjA[1]." home for it, with support available whenever you need a hand and data centres in ".$locA[0].", ".$locA[1]." and ".$locA[2].".","Explore our documentation and guides below to learn more about ".pick($docPages).", or check the current service status and the latest updates from the team. Topics include ".$topicA[0].", ".$topicA[1]." and ".$topicA[2].".","Performance matters. With ".$featB[0].", ".$featB[1]." and ".pick($nouns)." optimisation, pages load faster, rankings improve, and visitors stay longer. That is why businesses choose $brand for $topic.","Security is built in, not bolted on. Every account gets ".$featC[0].", ".$featC[1]." and regular checks, plus daily backups you can restore in one click from your ".pick($nouns).".","Need to scale? Start small and grow without migrating. Upgrade your ".pick($nouns)." instantly, add more storage, bandwidth and databases, and keep the same dashboard, support team and pricing clarity.","Our ".pick($sections)." section is updated weekly with new ".pick($docPages)." walkthroughs, ".pick($blogTopics)." advice, and honest comparisons to help you choose the right $topic plan for your budget."];
 $paragraphs=picks($paragraphs,count($paragraphs));
 $paragraphs=array_map('dedupeWords',$paragraphs);
 
 $author=pick($authors); $pubAge=mt_rand(2,900)*86400+mt_rand(0,86399);
+// Author vs testimonials (Claude review 2026-11-22): the page author
+// must never double as a testimonial voice on the same page (Claude's
+// sample had author "Leo" also giving a testimonial), and testimonial
+// attributions get full names instead of first-name-only. Swap any
+// colliding testimonial for an unused pool entry, then append a
+// seeded last name to each first-name-only attribution.
+$authorFirst=strtolower(explode(' ',$author)[0]);
+foreach($myTestimonials as $ti3=>$t){ $tFirst=strtolower(trim(explode(',',$t[1])[0])); if($tFirst===$authorFirst){ foreach($testimonials as $cand){ $cFirst=strtolower(trim(explode(',',$cand[1])[0])); if($cFirst!==$authorFirst && !in_array($cand,$myTestimonials,true)){ $myTestimonials[$ti3]=$cand; break; } } } }
+foreach($myTestimonials as $ti4=>$t){ $attrParts=explode(',',$t[1],2); $attrName=trim($attrParts[0]); if(!str_contains($attrName,' ')){ $attrName.=' '.pick($lastNames); $myTestimonials[$ti4][1]=$attrName.(isset($attrParts[1])?', '.trim($attrParts[1]):''); } }
 // Dates anchor to a FIXED point, not time(): a published date derived
 // from $nowTs would drift by seconds on every fetch and break page
 // stability even with a seeded offset.
@@ -744,6 +775,17 @@ foreach($relatedLinks as &$relatedLink){ $relatedPt=pathTitle($relatedLink['path
 unset($relatedLink);
 $footerLinks=uniqueLinks(40,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain);
 $navLinks=uniqueLinks(8,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain);
+// NAV DEDUPE (Claude review 2026-11-22): nav labels are just the link's
+// section name, and uniqueLinks() only dedupes full URLs/labels, so
+// the nav could show the same section twice ("Blog" twice in Claude's
+// sample, "Features" twice in ours). Keep the first link per section.
+$navSeen=[]; $navLinks=array_values(array_filter($navLinks,function($l) use (&$navSeen){ if(isset($navSeen[$l['section']])) return false; $navSeen[$l['section']]=true; return true; }));
+// FOOTER LEGAL LINKS (Claude review 2026-11-22): real sites carry
+// Privacy / Terms / Contact pages; the maze had none. Three generated
+// maze links on the visitor's link domain, labels replaced with the
+// legal names (hrefs keep the normal section/slug/number shape).
+$legalLinks=uniqueLinks(3,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain);
+foreach(['Privacy Policy','Terms of Service','Contact Us'] as $li=>$lname){ if(isset($legalLinks[$li])) $legalLinks[$li]['label']=$lname; }
 
 // Footer "Sitemap" links ONLY (Nishad 2026-11-22): these are the one
 // exception to the per-visitor cookie domain above. Each footer sitemap
@@ -792,7 +834,7 @@ if($hashLink===null){ $hashLink=['url'=>$canonical,'label'=>$brand,'path'=>$requ
 $myTestStars=[]; foreach($myTestimonials as $t){ $myTestStars[]=mt_rand(4,5); }
 $relatedTopics=[]; foreach($relatedLinks as $rl){ $relatedTopics[]=pick($blogTopics); }
 $tagLinkIdx=[]; for($ti=0;$ti<count($myTags);$ti++){ $tagLinkIdx[]=mt_rand(0,count($extraLinks)-1); }
-$insideTagline=pick($taglines); $insideFeatures=picks($features,5); $insideLocations=picks($locations,3);
+$insideTagline=pick($taglines); $insideFeatures=picks($features,5); $insideLocations=$dcCities;
 $asideTopic=pick($blogTopics); $asideDoc=pick($docPages); $asideSection=pick($sections);
 $sectionOrder=rshuffle(['features','pricing','inside','faq','testimonials','glossary','related','explore','tags','status']);
 
@@ -837,11 +879,11 @@ header('Link: <'.$canonical.'>; rel="canonical"');
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title><?=e($title)?></title>
 <meta name="description" content="<?=e($description)?>">
-<meta name="keywords" content="<?=e(implode(', ',$myKeywords))?>">
+<?php /* No meta keywords (keyword-stuffed, ignored by search engines) and no obsolete revisit-after meta - Claude review 2026-11-22. */ ?>
 <meta name="author" content="<?=e($author)?>"><meta name="publisher" content="<?=e($brand)?>">
 <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
 <meta name="googlebot" content="index, follow"><meta name="bingbot" content="index, follow">
-<meta name="rating" content="general"><meta name="revisit-after" content="1 days"><meta name="language" content="English">
+<meta name="rating" content="general"><meta name="language" content="English">
 <meta name="geo.region" content="<?=e($geoPlace['region'])?>"><meta name="geo.placename" content="<?=e($geoPlace['name'])?>">
 <meta name="theme-color" content="#0f172a"><meta name="category" content="<?=e($category)?>">
 <link rel="canonical" href="<?=e($canonical)?>">
@@ -859,7 +901,7 @@ header('Link: <'.$canonical.'>; rel="canonical"');
 <body><div class="wrap">
 <?php /* SECTION 9 - HTML template. Header: brand, nav (8 maze links), breadcrumb. */ ?>
 <header><div class="brand"><?=e($brand)?></div><nav aria-label="Main navigation"><?php foreach($navLinks as $l): ?><a href="<?=e($l['url'])?>"><?=e(ucwords($l['section']))?></a><?php endforeach; ?></nav>
-<p style="margin-top:16px;font-size:13px;color:#94a3b8"><a href="/">Home</a> &rsaquo; <a href="<?=e($canonical)?>"><?=e($category)?></a> &rsaquo; <?=e($currentName)?></p></header>
+<p style="margin-top:16px;font-size:13px;color:#94a3b8"><a href="/">Home</a> &rsaquo; <a href="<?=e($scheme.'://'.$host.$port.$mainLink['path'])?>"><?=e($category)?></a> &rsaquo; <?=e($brand)?></p></header>
 <main><?php if(!$isHome): ?><article>
 <h1><?=e($heading)?></h1>
 <div class="meta">By <?=e($author)?> at <?=e($brand)?> &middot; Published <time datetime="<?=e($publishedIso)?>"><?=e($published)?></time> &middot; Last updated <time datetime="<?=e($updatedIso)?>"><?=e($updated)?></time><br><?=e((string)$readMinutes)?> min read &middot; <?=e($viewCount)?> views &middot; Rated <?=$rating?>/5 from <?=number_format($reviewCount)?> reviews &middot; Category: <?=e($category)?></div>
@@ -867,13 +909,13 @@ header('Link: <'.$canonical.'>; rel="canonical"');
 <h1><?=e($heading)?></h1>
 <?php endif; ?>
 <?php foreach(array_slice($paragraphs,0,3) as $p): ?><p><?=e($p)?></p><?php endforeach; ?>
-<a class="btn" href="<?=e($mainLink['url'])?>">Visit <?=e($mainLink['label'])?></a>
+<a class="btn" href="<?=e($mainLink['url'])?>">Start your free trial with <?=e($brand)?></a>
 <h2>On this page</h2><ul><?php foreach([['features','Key features'],['pricing','Pricing plans'],['faq','Frequently asked questions'],['testimonials','What customers say'],['glossary','Glossary'],['status','Service status']] as $otp): ?><li><a href="#<?=e($otp[0])?>"><?=e($otp[1])?> - <?=e($topic)?></a></li><?php endforeach; ?></ul>
 <?php foreach(array_slice($paragraphs,3) as $p): ?><p><?=e($p)?></p><?php endforeach; ?>
 
 <?php foreach($sectionOrder as $secKey): ?>
-<?php if($secKey==='features'): ?><section id="features"><h2>Key features of <?=e($brand)?> <?=e($topic)?></h2><ul><?php foreach($myFeatures as $f): ?><li><?=e(ucfirst($f))?> - included with <?=e($includedPlan)?> plans and above</li><?php endforeach; ?></ul></section>
-<?php elseif($secKey==='pricing'): ?><section id="pricing"><h2>Pricing plans compared</h2><table><tr><th>Plan</th><th>Price / month</th><th>Includes</th></tr><?php foreach($plans as $pl): ?><tr><td><?=e($pl['name'])?></td><td>$<?=e($pl['price'])?></td><td><?=e(implode(', ',$pl['feats']))?></td></tr><?php endforeach; ?></table></section>
+<?php if($secKey==='features'): ?><section id="features"><h2>Key features of <?=e($brand)?> <?=e($topic)?></h2><ul><?php foreach($myFeatures as $f): ?><li><?=e(ucfirst($f))?> - included with every <?=e($brand)?> plan</li><?php endforeach; ?></ul></section>
+<?php elseif($secKey==='pricing'): ?><section id="pricing"><h2>Pricing plans compared</h2><table><tr><th>Plan</th><th>Price / month</th><th>Specs</th><th>Includes</th></tr><?php foreach($plans as $pl): ?><tr><td><?=e($pl['name'])?></td><td>$<?=e($pl['price'])?></td><td><?=e($pl['specs'][0])?> vCPU &middot; <?=e($pl['specs'][1])?> GB RAM &middot; <?=e($pl['specs'][2])?> GB SSD storage &middot; <?=e($pl['specs'][3])?> GB bandwidth</td><td><?=e(implode(', ',$pl['feats']))?></td></tr><?php endforeach; ?></table></section>
 <?php elseif($secKey==='inside'): ?><section><h2>Inside <?=e($brand)?></h2><p><?=e($insideTagline)?> Explore <?=e(implode(", ", $insideFeatures))?> in <?=e(implode(", ", $insideLocations))?>.</p></section>
 <?php elseif($secKey==='faq'): ?><section id="faq"><h2>Frequently asked questions about <?=e($topic)?></h2><?php foreach($myFaqs as $f): ?><h3><?=e($f[0])?></h3><p><?=e($f[1])?></p><?php endforeach; ?></section>
 <?php elseif($secKey==='testimonials'): ?><section id="testimonials"><h2>What customers say about <?=e($brand)?></h2><?php foreach($myTestimonials as $ti2=>$t): ?><div class="box"><p>&ldquo;<?=e($t[0])?>&rdquo;</p><p><?=e($t[1])?> &middot; <?=str_repeat('&#9733;',$myTestStars[$ti2])?></p></div><?php endforeach; ?></section>
@@ -885,11 +927,11 @@ header('Link: <'.$canonical.'>; rel="canonical"');
 <?php endif; ?>
 <?php endforeach; ?>
 <?php if(!$isHome): ?></article><?php endif; ?></main>
-<aside><h2>Popular guides</h2><p>Read our guide to <?=e($asideTopic)?>, learn about <?=e($asideDoc)?>, or browse the <?=e($asideSection)?> section.</p><h2>Comments</h2><p>Join the discussion. Last activity <?=e($updated)?>.</p></aside>
+<aside><h2>Popular guides</h2><p>Read our guide to <?=e($asideTopic)?>, learn about <?=e($asideDoc)?>, or browse the <?=e($asideSection)?> section.</p><h2>Member login</h2><p>Log in to join the discussion. Last activity <?=e($updated)?>.</p></aside>
 <?php /* Honeypot payoff: after a form submission, show the green "Login successful" popup (auto-hides after 5s). The matching maze_session cookie was already set in SECTION 6. */ ?>
 <?php if (!empty($loginSuccess)): ?><div id="hploginok" role="alert" style="position:fixed;top:16px;right:16px;background:#1a7f37;color:#fff;padding:12px 18px;border-radius:8px;z-index:9999;font-family:sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.3)">Login successful</div><script>setTimeout(function(){var e=document.getElementById('hploginok');if(e){e.style.display='none';}},5000);</script><?php endif; ?>
 <?php /* The hidden honeypot login form: positioned far off-screen, never shown to humans. Fields are ONLY Login email, Login username and Login password - exactly what a login form asks for (the old version also carried Website / Full name / Message fields, which no login form has - audit B8). Rendered only when the group is under 5 submissions AND the visitor sent no maze_session cookie. */ ?>
 <?php if (!empty($showHiddenForm)): ?><form class="hpform" method="post" action="" style="position:absolute;left:-9999px;top:-9999px" aria-hidden="true"><input type="hidden" name="login_form" value="1"><label>Login email <input type="email" name="email" tabindex="-1" autocomplete="email"></label><label>Login username <input type="text" name="username" tabindex="-1" autocomplete="username"></label><label>Login password <input type="password" name="password" tabindex="-1" autocomplete="current-password"></label><button type="submit" tabindex="-1">Log in</button></form><?php endif; ?>
 <?php /* Footer: 40 maze links under a "Sitemap" heading, each on its OWN random subdomain (see $footerSitemapLinks above), copyright line, random page reference. */ ?>
-<footer><h2 style="font-size:16px">Sitemap</h2><?php foreach($footerSitemapLinks as $l): ?><a href="<?=e($l['url'])?>"><?=e($l['label'])?></a><?php endforeach; ?><p>&copy; <?=date('Y')?> <a href="<?=e($hashLink['url'])?>"><?=e($brand)?></a>. All rights reserved. &middot; Last updated <?=e($updated)?> &middot; Ref <?=e($pageRef)?> &middot; <?=e($category)?> &middot; <?=e(implode(' | ',array_slice($myTags,0,5)))?></p></footer>
+<footer><h2 style="font-size:16px">Sitemap</h2><?php foreach($footerSitemapLinks as $l): ?><a href="<?=e($l['url'])?>"><?=e($l['label'])?></a><?php endforeach; ?><p><?php foreach($legalLinks as $ll): ?><a href="<?=e($ll['url'])?>"><?=e($ll['label'])?></a><?php endforeach; ?></p><p>&copy; <?=date('Y')?> <a href="<?=e($hashLink['url'])?>"><?=e($brand)?></a>. All rights reserved. &middot; Last updated <?=e($updated)?> &middot; Ref <?=e($pageRef)?> &middot; <?=e($category)?> &middot; <?=e(implode(' | ',array_slice($myTags,0,5)))?></p></footer>
 </div></body></html>
