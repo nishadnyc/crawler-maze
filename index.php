@@ -943,6 +943,23 @@ $hostTestimonials=[];
 foreach(picks($hostTestPool,3) as $ht){ $hp=explode(',',$ht[1],2); $hostTestimonials[]=[$ht[0], trim($hp[0]).' '.pick($lastNames).(isset($hp[1])?', '.trim($hp[1]):'')]; }
 $hostTestStars=[]; foreach($hostTestimonials as $ht){ $hostTestStars[]=mt_rand(4,5); }
 $rating=(mt_rand(38,50)/10); $reviewCount=mt_rand(120,4800);
+// HOST FEATURES SECTION (issue #6 fix 2026-11-22): the Features
+// section set is drawn HERE, under the host seed, from this host's
+// coherent pool - it used to be drawn in Phase B under the page
+// seed, so one host showed a different "Key features" list on every
+// page (velvet-river: malware scanning/caching/firewall on the
+// homepage, backups/PHP selector/installers on the SSL page). A real
+// host has ONE feature list. Drawn LAST in Phase A, after every
+// other host value, so no brand/price/testimonial/rating value
+// shifts. The PR #3 stack guarantee is kept: two of the focus
+// stack's own features lead the section on a stack host.
+if($hostStackDetails){
+    $stackSel=picks($hostStackDetails,min(2,count($hostStackDetails)));
+    $restFeatPool=array_values(array_filter($hostFeatureDetails,fn($fd)=>!in_array($fd[0],array_column($stackSel,0),true)));
+    $featDetailsSel=array_merge($stackSel, picks($restFeatPool, 8-count($stackSel)));
+} else {
+    $featDetailsSel=picks($hostFeatureDetails,8);
+}
 // Phase B - PAGE CONTENT (seed 'page|<host>|<path>'): everything
 // specific to this one URL is generated under this seed below, so
 // a page is stable across fetches but differs across URLs.
@@ -978,16 +995,10 @@ if($slugTopic!==null){
     elseif($layout==='docs'){ $heading=$slugTopic['name']; $title=$slugTopic['name'].' - '.$brand.' Documentation'; }
     else { $heading=$slugTopic['name'].' - '.$brand; $title=$heading; }
 }
-// Features section draws ONLY from this host's coherent pool (Phase A):
-// a stack host can never show another stack's features on any page,
-// and two of its own stack's features are guaranteed into the section.
-if($hostStackDetails){
-    $stackSel=picks($hostStackDetails,min(2,count($hostStackDetails)));
-    $restFeatPool=array_values(array_filter($hostFeatureDetails,fn($fd)=>!in_array($fd[0],array_column($stackSel,0),true)));
-    $featDetailsSel=array_merge($stackSel, picks($restFeatPool, 8-count($stackSel)));
-} else {
-    $featDetailsSel=picks($hostFeatureDetails,8);
-}
+// Features section set comes from Phase A ($featDetailsSel, host
+// seed, issue #6): the SAME set renders on every page of this host,
+// drawn only from the host's coherent pool, so a stack host can
+// never show another stack's features on any page.
 $myFeatures=array_map(fn($fd)=>$fd[0], $featDetailsSel); $myTags=picks($tags,14);
 // TAGS DERIVATION (page-structure fix 2026-11-22): the tags must describe
 // THIS page, not just the generic pool - and the set must never be empty,
