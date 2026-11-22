@@ -541,6 +541,25 @@ $navLinks=uniqueLinks(8,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,
 $footerSitemapLinks=[]; $footerHosts=[]; $footerLabels=[]; $footerTries=0;
 while(count($footerSitemapLinks)<40 && $footerTries<800){ $footerTries++; $c=buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,null); $fh=parse_url($c['url'],PHP_URL_HOST); if(!$fh || isset($footerHosts[$fh]) || isset($used[$c['url']])) continue; $flabel=titleWords(explode('.',$fh)[0]); if(isset($footerLabels[$flabel])) continue; $footerHosts[$fh]=true; $footerLabels[$flabel]=true; $used[$c['url']]=true; $c['label']=$flabel; $footerSitemapLinks[]=$c; }
 
+// HASH COPYRIGHT LINK (Nishad 2026-11-22): exactly ONE link on the
+// whole page uses a fully generated "hash" subdomain instead of a
+// dictionary word - the brand name in the footer copyright line.
+// The hash label is 6-7 characters: lowercase letters + digits (at
+// least one of each, so it can never collide with a dictionary-word
+// subdomain), with an optional hyphen that may only appear in the
+// middle - never as the first or last character. It is generated
+// fresh on every render, so every page - and every follow-up visit
+// to a hash host, which serves a fresh maze page - yields a brand
+// new hash host: a never-ending trail even for crawlers that never
+// return the maze_link cookie. Its path is a normal generated maze
+// path (buildUrl). ALL other links keep their existing rules:
+// page links follow the per-visitor maze_link cookie domain, and
+// footer Sitemap links stay on dictionary-word subdomains.
+function makeHashLabel(): string { $len=random_int(6,7); $hyphPos=(random_int(0,1)===0)?random_int(2,$len-3):-1; $chars='abcdefghijklmnopqrstuvwxyz0123456789'; $out=''; $hasLetter=false; $hasDigit=false; for($i=0;$i<$len;$i++){ if($i===$hyphPos){ $out.='-'; continue; } $ch=$chars[random_int(0,strlen($chars)-1)]; if(ctype_alpha($ch)) $hasLetter=true; else $hasDigit=true; $out.=$ch; } if(!$hasLetter||!$hasDigit){ return makeHashLabel(); } return $out; }
+$hashLink=null; $hashTries=0;
+while($hashLink===null && $hashTries<100){ $hashTries++; $hashHost=makeHashLabel().'.'.$baseDomain; if($hashHost===$linkDomain || $hashHost===$host || isset($footerHosts[$hashHost])) continue; $hc=buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$hashHost); if(isset($used[$hc['url']])) continue; $used[$hc['url']]=true; $hashLink=$hc; }
+if($hashLink===null){ $hashLink=['url'=>$canonical,'label'=>$brand,'path'=>$requestPath,'section'=>'']; }
+
 
 $planName=pick($planNames); $planPrice=random_int(1,29).'.'.pick(['00','49','99','50']);
 $plans=[]; foreach(picks($planNames,3) as $pn){ $plans[]=['name'=>$pn,'price'=>random_int(1,49).'.'.pick(['00','49','99']),'feats'=>picks($features,4)]; }
@@ -629,5 +648,5 @@ header('Link: <'.$canonical.'>; rel="canonical"');
 <?php /* The hidden honeypot login form: positioned far off-screen, never shown to humans. Field order is deliberate - Website, Login email, Login username, Login password, Full name, Message - so form-filling bots treat it as a real login. Rendered only when the group is under 5 submissions AND the visitor sent no maze_session cookie. */ ?>
 <?php if (!empty($showHiddenForm)): ?><form class="hpform" method="post" action="" style="position:absolute;left:-9999px;top:-9999px" aria-hidden="true"><input type="hidden" name="contact_form" value="1"><label>Website <input type="url" name="website" tabindex="-1" autocomplete="off"></label><label>Login email <input type="email" name="email" tabindex="-1" autocomplete="off"></label><label>Login username <input type="text" name="username" tabindex="-1" autocomplete="off"></label><label>Login password <input type="password" name="password" tabindex="-1" autocomplete="off"></label><label>Full name <input type="text" name="name" tabindex="-1" autocomplete="off"></label><label>Message <textarea name="message" tabindex="-1"></textarea></label><button type="submit" tabindex="-1">Send enquiry</button></form><?php endif; ?>
 <?php /* Footer: 40 maze links under a "Sitemap" heading, each on its OWN random subdomain (see $footerSitemapLinks above), copyright line, random page reference. */ ?>
-<footer><h2 style="font-size:16px">Sitemap</h2><?php foreach($footerSitemapLinks as $l): ?><a href="<?=e($l['url'])?>"><?=e($l['label'])?></a><?php endforeach; ?><p>&copy; <?=date('Y')?> <?=e($brand)?>. All rights reserved. &middot; Last updated <?=e($updated)?> &middot; Ref <?=e($pageRef)?> &middot; <?=e($category)?> &middot; <?=e(implode(' | ',array_slice($myTags,0,5)))?></p></footer>
+<footer><h2 style="font-size:16px">Sitemap</h2><?php foreach($footerSitemapLinks as $l): ?><a href="<?=e($l['url'])?>"><?=e($l['label'])?></a><?php endforeach; ?><p>&copy; <?=date('Y')?> <a href="<?=e($hashLink['url'])?>"><?=e($brand)?></a>. All rights reserved. &middot; Last updated <?=e($updated)?> &middot; Ref <?=e($pageRef)?> &middot; <?=e($category)?> &middot; <?=e(implode(' | ',array_slice($myTags,0,5)))?></p></footer>
 </div></body></html>
