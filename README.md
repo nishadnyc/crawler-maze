@@ -8,13 +8,13 @@
 
 *What the logs say · Sunday, November 22, 2026 · counted from the maze's own logs.*
 
-**63,259** crawler hits served · **1,461** unique IPs · **317** subnet log files · **65,240** banned hits
+**63,529** crawler hits served · **1,464** unique IPs · **318** subnet log files · **66,527** banned hits
 
 | Crawler | Requests | Banned hits | IPs | What it was after |
 | --- | ---: | ---: | --- | --- |
-| ClaudeBot | 31,943 | 668 | 1 — all from `216.73.216.60` | Tutorials, Developer pages, robots.txt |
-| GPTBot | 1,513 | 63,296 | 296 | Newsroom, Marketplace, Platform |
-| OAI-SearchBot | 18,912 | 1,276 | 257 | robots.txt |
+| ClaudeBot | 32,189 | 668 | 1 — all from `216.73.216.60` | Tutorials, Developer pages, robots.txt |
+| GPTBot | 1,514 | 64,582 | 296 | Newsroom, Marketplace, Platform |
+| OAI-SearchBot | 18,912 | 1,277 | 257 | robots.txt |
 | facebookexternalhit | 202 | 0 | 76 | robots.txt |
 | Fake old-Chrome scanner fleet | 4,114 | 0 | 61 | favicon.ico |
 | Credential hunters | 3,342 | 0 | 137 | Probing for /.env, firebase keys and similar files that don't exist here |
