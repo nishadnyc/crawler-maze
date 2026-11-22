@@ -764,7 +764,15 @@ $geoPlace=$geoPlaces[mt_rand(0,count($geoPlaces)-1)];
 // the pricier ones lacked, and no plan had any specs at all (Claude
 // review 2026-11-22). JSON-LD price stays $plans[0] (cheapest tier).
 $planFeatPool=picks(array_column($featureDetails,0),8); $planSpecTiers=[[1,1,10,100],[2,2,25,250],[4,4,50,500]];
-$plans=[]; $ladderCents=mt_rand(2,9)*100+(mt_rand(0,1)?99:0); foreach(picks($planNames,3) as $pi=>$pn){ $plans[]=['name'=>$pn,'price'=>number_format($ladderCents/100,2),'feats'=>array_slice($planFeatPool,0,4+2*$pi),'specs'=>$planSpecTiers[$pi]]; $ladderCents+=mt_rand(2,12)*100+(mt_rand(0,1)?99:0); if(($ladderCents%100)!==99 && ($ladderCents%100)!==0) $ladderCents+= (99-($ladderCents%100)); }
+// Plan NAMES follow tier order (cold-review fix 2026-11-22): the old
+// picks($planNames,3) drew 3 names in random order, so some hosts sold
+// "Enterprise" as the cheapest tier and "Starter" as the priciest.
+// Now one name is drawn per tier band - entry band for the cheapest
+// tier, top band for the most expensive - so the ladder reads in
+// order on every host.
+$planTierBands=[['Starter','Launch','Creator'],['Growth','Scale','Business','Developer'],['Pro','Turbo','Mega','Ultra','Agency','Enterprise','Cloud Nine']];
+$tierNames=[]; foreach($planTierBands as $tb){ $tierNames[]=pick($tb); }
+$plans=[]; $ladderCents=mt_rand(2,9)*100+(mt_rand(0,1)?99:0); foreach($tierNames as $pi=>$pn){ $plans[]=['name'=>$pn,'price'=>number_format($ladderCents/100,2),'feats'=>array_slice($planFeatPool,0,4+2*$pi),'specs'=>$planSpecTiers[$pi]]; $ladderCents+=mt_rand(2,12)*100+(mt_rand(0,1)?99:0); if(($ladderCents%100)!==99 && ($ladderCents%100)!==0) $ladderCents+= (99-($ladderCents%100)); }
 $planPrice=$plans[0]['price'];
 $planName=pick($planNames);
 $uptimeStr=number_format(mt_rand(982,999)/10,1); $sitesHosted=number_format(mt_rand(1200,98000)); $responseMs=mt_rand(12,240);
@@ -777,6 +785,24 @@ $uptimeStr=number_format(mt_rand(982,999)/10,1); $sitesHosted=number_format(mt_r
 // Sydney/Chicago/Tokyo DC list all at once.
 $dcOthers=picks(array_values(array_diff($locations,[$geoPlace['name']])),2); $dcCities=array_merge([$geoPlace['name']],$dcOthers);
 $statusLine=pick($statusLines); $statusDc=$geoPlace['name']; $statusTagline=pick($taglines);
+// HOST TESTIMONIALS + PRODUCT RATING (cold-review fix 2026-11-22):
+// these are company-level facts, but they were picked under the
+// Phase B page seed, so on one host the same quote appeared as
+// "Tom King" on one page and "Tom Carter" on another, and the
+// product rating/review count changed on every page - the #1 tell
+// in five independent cold reviews. They are now drawn HERE, under
+// the host seed: one testimonial set (quote + full name + role +
+// star count) and one AggregateRating value per host, identical on
+// every page of that host. The testimonial pool is first filtered
+// to first names no page author can have, so the author-collision
+// rule holds on every page without swapping testimonials per page
+// (swapping was part of the drift). Surnames are appended here too.
+$authorFirsts=array_map(fn($a)=>strtolower(explode(' ',$a)[0]),$authors);
+$hostTestPool=array_values(array_filter($testimonials,fn($t)=>!in_array(strtolower(trim(explode(',',$t[1])[0])),$authorFirsts,true)));
+$hostTestimonials=[];
+foreach(picks($hostTestPool,3) as $ht){ $hp=explode(',',$ht[1],2); $hostTestimonials[]=[$ht[0], trim($hp[0]).' '.pick($lastNames).(isset($hp[1])?', '.trim($hp[1]):'')]; }
+$hostTestStars=[]; foreach($hostTestimonials as $ht){ $hostTestStars[]=mt_rand(4,5); }
+$rating=(mt_rand(38,50)/10); $reviewCount=mt_rand(120,4800);
 // Phase B - PAGE CONTENT (seed 'page|<host>|<path>'): everything
 // specific to this one URL is generated under this seed below, so
 // a page is stable across fetches but differs across URLs.
@@ -800,7 +826,7 @@ $heading=ucwords(pick($adjectives)).' '.$topic.' with '.$brand;
 if(in_array($layout,['article','guide'],true)) $heading=pick($articleTitles);
 $featDetailsSel=picks($featureDetails,8); $myFeatures=array_map(fn($fd)=>$fd[0], $featDetailsSel); $myTags=picks($tags,14); $myKeywords=array_merge(picks($keywordsExtra,8), $myTags, [$topic,$brand.' hosting', $brand]);
 $description=dedupeWords($brand.' - '.$heading.'. Explore '.$topic.', '.implode(', ',array_slice($myFeatures,0,4)).', pricing, documentation, guides and support. Trusted hosting in '.$geoPlace['name'].' and worldwide.');
-$myFaqs=picks($faqPairs,5); $myTestimonials=picks($testimonials,3); $myGlossary=picks($glossary,4);
+$myFaqs=picks($faqPairs,5); $myTestimonials=$hostTestimonials; $myGlossary=picks($glossary,4);
 
 $featA=picks($features,2); $featB=picks($features,2); $featC=picks($features,2); $adjA=picks($adjectives,2); $locA=$dcCities; $topicA=picks($blogTopics,3);
 $corpusSel=picks($corpusParas,6);
@@ -817,14 +843,18 @@ $author=pick($authors); $pubAge=mt_rand(2,900)*86400+mt_rand(0,86399);
 // colliding testimonial for an unused pool entry, then append a
 // seeded last name to each first-name-only attribution.
 $authorFirst=strtolower(explode(' ',$author)[0]);
-foreach($myTestimonials as $ti3=>$t){ $tFirst=strtolower(trim(explode(',',$t[1])[0])); if($tFirst===$authorFirst){ foreach($testimonials as $cand){ $cFirst=strtolower(trim(explode(',',$cand[1])[0])); if($cFirst!==$authorFirst && !in_array($cand,$myTestimonials,true)){ $myTestimonials[$ti3]=$cand; break; } } } }
-foreach($myTestimonials as $ti4=>$t){ $attrParts=explode(',',$t[1],2); $attrName=trim($attrParts[0]); if(!str_contains($attrName,' ')){ $attrName.=' '.pick($lastNames); $myTestimonials[$ti4][1]=$attrName.(isset($attrParts[1])?', '.trim($attrParts[1]):''); } }
+// Testimonials need NO per-page fixups any more: the host-seeded set
+// (Phase A) already carries full names, and its pool excludes every
+// author first name, so the page author can never collide with a
+// testimonial voice on any page of the host. The old per-page swap +
+// surname-append loops that lived here were a direct cause of the
+// cross-page name drift and are removed.
 // Dates anchor to a FIXED point, not time(): a published date derived
 // from $nowTs would drift by seconds on every fetch and break page
 // stability even with a seeded offset.
 $pageAnchorTs=strtotime('2026-11-01 00:00:00 UTC'); $publishedTs=$pageAnchorTs-$pubAge; $updatedTs=$publishedTs+mt_rand(3600,max(7200,$pubAge-3600)); if($updatedTs>$pageAnchorTs) $updatedTs=$pageAnchorTs;
 $published=date('F j, Y',$publishedTs); $updated=date('F j, Y',$updatedTs); $publishedIso=date('c',$publishedTs); $updatedIso=date('c',$updatedTs);
-$readMinutes=mt_rand(4,18); $commentCount=mt_rand(0,89); $viewCount=number_format(mt_rand(180,98000)); $rating=(mt_rand(38,50)/10); $reviewCount=mt_rand(120,4800);
+$readMinutes=mt_rand(4,18); $commentCount=mt_rand(0,89); $viewCount=number_format(mt_rand(180,98000)); // $rating/$reviewCount are HOST traits now (Phase A) - the product rating must not re-roll per page.
 // Footer Ref is derived from host+path, so the same URL shows the same
 // Ref on every load (audit B10) instead of re-rolling per request.
 $pageRef=substr(md5($host.'|'.$requestPath),0,18);
@@ -924,10 +954,10 @@ if($hashLink===null){ $hashLink=['url'=>$canonical,'label'=>$brand,'path'=>$requ
 // "Inside" section picks, the aside picks, and the seeded section
 // order (stable per URL, varied across URLs - audit B2 noted the
 // order had become fixed).
-$myTestStars=[]; foreach($myTestimonials as $t){ $myTestStars[]=mt_rand(4,5); }
+$myTestStars=$hostTestStars; // testimonial stars are part of the host testimonial set (Phase A), not per-page
 $relatedTopics=[]; foreach($relatedLinks as $rl){ $relatedTopics[]=pick($blogTopics); }
 $tagLinkIdx=[]; for($ti=0;$ti<count($myTags);$ti++){ $tagLinkIdx[]=mt_rand(0,count($extraLinks)-1); }
-$insideTagline=pick($taglines); $insideFeatures=picks($features,5); $insideLocations=$dcCities;
+$insideTagline=$statusTagline; $insideFeatures=picks($features,5); $insideLocations=$dcCities; // tagline is a company fact: reuse the host-seeded one instead of re-rolling per page (same drift class)
 $asideTopic=pick($blogTopics); $asideDoc=pick($docPages); $asideSection=pick($sections);
 if($layout==='docs'||$layout==='guide') $sectionOrder=array_merge(['steps'],rshuffle(['features','faq','glossary','related','explore','tags','inside']));
 elseif($layout==='pricing') $sectionOrder=['pricing','features','faq','testimonials','status','related','explore','tags'];
