@@ -1064,6 +1064,13 @@ $used=[]; $mainLink=buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docP
 // sequence shifts - which makes the target identical on every page of
 // the host and stable across fetches.
 $trialId=10000 + (hexdec(substr(hash('sha256','trial|'.$host),0,6)) % 89999);
+// Issue #4 fix: that formula spans 10000-99998, but the path validator
+// only accepts IDs up to 89999, so hosts whose hash landed at 90000+
+// (e.g. velvet-river: 91326) got a trial button that 404s. Fold just
+// the overflow band back into range (90000-99998 -> 10000-19998);
+// in-range IDs are untouched, so hosts whose CTA already works keep
+// the exact same URL. Still no mt_rand consumed.
+if($trialId>89999) $trialId-=80000;
 $trialLink=['url'=>$scheme.'://'.$host.$port.'/pricing/getting-started/'.$trialId,'path'=>'/pricing/getting-started/'.$trialId,'section'=>'pricing'];
 $used[$trialLink['url']]=true;
 $exploreCount=['home'=>80,'article'=>48,'guide'=>40,'docs'=>32,'pricing'=>24,'company'=>24,'status'=>16][$layout] ?? 40;
@@ -1265,7 +1272,8 @@ header('Link: <'.$canonical.'>; rel="canonical"');
 <h1><?=e($heading)?></h1>
 <?php endif; ?>
 <?php foreach(array_slice($paragraphs,0,3) as $p): ?><p><?=e($p)?></p><?php endforeach; ?>
-<a class="btn" href="<?=e($trialLink['url'])?>">Start your free trial with <?=e($brand)?></a>
+<?php if($requestPath!==$trialLink['path']): ?><a class="btn" href="<?=e($trialLink['url'])?>">Start your free trial with <?=e($brand)?></a>
+<?php endif; ?>
 <h2>On this page</h2><ul><?php foreach(array_values(array_filter([['features','Key features'],['pricing','Pricing plans'],['faq','Frequently asked questions'],['testimonials','What customers say'],['glossary','Glossary'],['status','Service status'],['steps','Step by step'],['statusboard','Current service status'],['company','About us']], fn($o)=>in_array($o[0],$sectionOrder,true))) as $otp): ?><li><a href="#<?=e($otp[0])?>"><?=e($otp[1])?> - <?=e($topic)?></a></li><?php endforeach; ?></ul>
 <?php foreach(array_slice($paragraphs,3) as $p): ?><p><?=e($p)?></p><?php endforeach; ?>
 
