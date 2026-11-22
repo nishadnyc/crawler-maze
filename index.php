@@ -538,6 +538,21 @@ foreach($links as &$exploreLink){ $explorePt=pathTitle($exploreLink['path']); $e
 unset($exploreLink);
 $extraLinks=uniqueLinks(18,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain);
 $relatedLinks=uniqueLinks(6,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain);
+// RELATED LABEL PREFIXES (Nishad 2026-11-22): same fix as the Explore
+// list above, scoped to the "Related articles and guides" cards
+// ($relatedLinks) ONLY. buildUrl() derives each label from the link's
+// HOST, and every Related link sits on the one cookie/link domain -
+// so all 6 card labels opened with the SAME two words (the cookie
+// domain's name). The URL behaviour does NOT change: Related hrefs
+// stay on the visitor's cookie link domain exactly as before. Only
+// the visible label prefix is replaced, per link, with a fresh
+// random name drawn the same way buildUrl() picks random subdomain
+// words (a $subWords pick, sometimes hyphen-joined to a second one),
+// de-duplicated across the 6 cards and never equal to the old fixed
+// prefix. The path-derived part of the label is kept as-is.
+$relatedOldPrefix=titleWords(explode('.',$linkDomain)[0]); $relatedPrefixes=[];
+foreach($relatedLinks as &$relatedLink){ $relatedPt=pathTitle($relatedLink['path']); $relatedPrefix=''; $relatedTries=0; while($relatedTries<200){ $relatedTries++; $relatedW=pick($subWords); if(random_int(0,2)===0) $relatedW.='-'.pick($subWords); $relatedCand=titleWords($relatedW); if($relatedCand===$relatedOldPrefix || isset($relatedPrefixes[$relatedCand])) continue; $relatedPrefix=$relatedCand; break; } if($relatedPrefix==='') $relatedPrefix=titleWords(pick($subWords)).' '.random_int(2000,3000); $relatedPrefixes[$relatedPrefix]=true; $relatedLink['label']=$relatedPrefix.($relatedPt!==''?' '.$relatedPt:''); }
+unset($relatedLink);
 $footerLinks=uniqueLinks(40,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain);
 $navLinks=uniqueLinks(8,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain);
 
