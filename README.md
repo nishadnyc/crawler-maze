@@ -23,11 +23,13 @@ in the code.
 - **Rotation every 5 seconds**: a single tracker file,
   `public_html/.maze-domain.json`, holds `{"domain": ..., "updated_at": ...}`
   — the current link domain and when it last changed. On each page load the
-  script reads it under an exclusive `flock()`; if 5+ seconds have passed,
-  the request that holds the lock picks ONE new fixed domain, writes it
-  back, and every page served in the new window links only to that domain.
-  Simultaneous visitors cannot conflict: the lock makes one request the
-  decider, everyone else reads the same tracked domain.
+  script reads it under an exclusive `flock()`; if 5+ seconds have passed
+  since the tracker last changed, the NEW arrival's own domain replaces
+  the tracker — whoever shows up first after the window sets the domain
+  everyone sees until the next window passes, and a late arrival (even an
+  hour later) never sees the old domain. Simultaneous visitors cannot
+  conflict: the lock makes one request the decider, everyone else in the
+  window reads the same tracked domain.
 - **Separate from the logs by design**: the tracker is its own tiny global
   file next to `index.php` (same pattern as `.maze-bans.json`, and equally
   web-blocked by the root `.htaccess`), never inside `logs/` and never

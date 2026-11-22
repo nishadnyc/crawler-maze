@@ -417,8 +417,9 @@ if (str_ends_with($requestPath, 'sitemap.xml')) {
 // so each URL looks like a distinct article.
 // TIMED DOMAIN SHIFT (branch timed-domain-shift): page links no longer
 // each point at a different random sibling subdomain. ALL page links use
-// ONE tracked link domain at a time - at first the host being visited -
-// and that domain only changes every 5 seconds. The current domain and
+// ONE tracked link domain at a time - at first the host being visited.
+// The tracker can only change every 5 seconds, and when it does, the
+// next arrival's OWN domain replaces it. The current domain and
 // when it last changed live in ONE single tracker file,
 // .maze-domain.json, kept separate from the daily logs in logs/.
 // ---------------------------------------------------------------------------
@@ -445,9 +446,11 @@ if ($domainTf) {
             // becomes the current link domain.
             $linkDomain = $host; $trackedAt = $nowTs; $changed = true;
         } elseif ($nowTs - $trackedAt >= 5) {
-            // Window expired: shift to ONE new fixed domain.
-            do { $w = pick($subWords); if (random_int(0, 2) === 0) $w .= '-' . pick($subWords); $newDomain = $w . '.' . $baseDomain; } while ($newDomain === $trackedDomain);
-            $linkDomain = $newDomain; $trackedAt = $nowTs; $changed = true;
+            // Window expired: the NEW arrival's own domain replaces the
+            // tracker. Whoever shows up first after the 5 seconds sets
+            // the domain everyone sees until the next window passes -
+            // a late arrival never sees the old domain.
+            $linkDomain = $host; $trackedAt = $nowTs; $changed = true;
         } else {
             $linkDomain = $trackedDomain;
         }
