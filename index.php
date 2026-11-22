@@ -62,7 +62,7 @@ if (empty($_COOKIE['maze_visit'])) {
 function pick(array $a): string { return $a[random_int(0, count($a)-1)]; }
 function picks(array $a, int $n): array { $o=[];$c=$a; for($i=0;$i<$n&&$c;$i++){ $k=random_int(0,count($c)-1); $o[]=$c[$k]; array_splice($c,$k,1);} return $o; }
 function e(string $s): string { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8'); }
-function slugify(string $s): string { return strtolower(preg_replace('/[^a-z0-9]+/','-', $s)); }
+function slugify(string $s): string { return preg_replace('/[^a-z0-9]+/','-', strtolower($s)); }
 
 // ---------------------------------------------------------------------------
 // SECTION 2 - Content pools (base lists)
@@ -313,13 +313,13 @@ if ($sf) {
         if ($seg !== '' && strlen($seg) <= 40 && count($grp['sections']) < 50) $grp['sections'][$seg] = (int)($grp['sections'][$seg] ?? 0) + 1;
         $grp['last_host'] = $host;
         $grp['last_path'] = substr($requestPath, 0, 120);
-        // Honeypot: a POST with the contact_form marker is a form submission.
+        // Honeypot: a POST with the login_form marker is a form submission.
         // The first 5 per group are logged in full (host, path, timestamp and
         // the submitted field values, trimmed to 120 chars each); each also
         // earns the "Login successful" popup + a maze_session cookie.
         // Submissions past 5 are only counted (form_submissions_blocked).
         $formCount = (int)($grp['form_submissions'] ?? 0);
-        if ((($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') && isset($_POST['contact_form'])) {
+        if ((($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') && isset($_POST['login_form'])) {
             if ($formCount < 5) {
                 $grp['form_submissions'] = $formCount + 1; $formCount++;
                 $sessTok = bin2hex(random_bytes(16)); setcookie('maze_session', $sessTok, time() + 2592000, '/'); $loginSuccess = true;
@@ -438,6 +438,10 @@ if (str_ends_with($requestPath, 'sitemap.xml')) {
 // and from maze_session (honeypot) - neither of those is touched.
 // ---------------------------------------------------------------------------
 $canonical=$scheme.'://'.$host.$port.$requestPath;
+// Homepage detection: the homepage is the request path '/' (or empty).
+// It must present as a website, not an article (see the og:/JSON-LD
+// rules in SECTION 8 below); every other path keeps article behaviour.
+$isHome=($requestPath==='/'||$requestPath==='');
 
 // Per-visitor link-domain session cookie. Value shape:
 // "<link domain>__<unix timestamp>". Both parts are validated before
@@ -479,11 +483,23 @@ if ($cookieLinkDomain === '') {
     $linkDomain = $cookieLinkDomain;
 }
 
-// Build one maze URL: section + optional doc page + trailing random
+// Build one maze URL: section + a slug segment + trailing random
 // number, on the visitor's cookie link domain when one is given,
 // otherwise on a random sibling subdomain (the sitemap.xml builder
 // uses this and then overrides the host anyway).
 // Returns label, full URL, path, section.
+//
+// LABEL IN THE PATH (Nishad 2026-11-22): every path now ALWAYS carries
+// a descriptive slug segment - the title words that go into the
+// label, slugified (lowercase, whitespace -> dashes) - followed by
+// the random 2000-3000 number (numbers are normal in article URLs,
+// so the number stays, as its own trailing segment). E.g. label
+// "... Guides Getting Started" -> /guides/getting-started/2841.
+// The slug is built from the pathTitle words, so the slug words are
+// always a subset of the final label - including for Explore and
+// Related links, whose host-derived label PREFIX is replaced with a
+// random name after buildUrl() returns (that replacement never
+// touches the pathTitle portion, so slug-in-label still holds).
 //
 // LINK TITLES (Nishad 2026-11-22 follow-up): the label is the host's
 // first label titlecased PLUS a title built from the link's OWN path
@@ -496,7 +512,7 @@ if ($cookieLinkDomain === '') {
 // visitor's cookie domain, only their visible titles now differ.
 function titleWords($slug): string { return ucwords(str_replace('-',' ',(string)$slug)); }
 function pathTitle($path): string { $parts=[]; foreach(explode('/',trim((string)$path,'/')) as $seg){ if($seg===''||is_numeric($seg)) continue; $parts[]=titleWords($seg); } return implode(' ',$parts); }
-function buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$linkHost=null): array { if($linkHost!==null && $linkHost!==''){ $w=explode('.',$linkHost)[0]; $urlHost=$linkHost; } else { $w=pick($subWords); if(random_int(0,2)===0) $w.='-'.pick($subWords); $urlHost=$w.'.'.$baseDomain; } $s=pick($sections); $path='/'.$s; if(in_array($s,['docs','guides','tutorials','blog','knowledge-base'],true)&&random_int(0,1)) $path.='/'.pick($docPages); if(random_int(0,3)===0) $path.='/'.pick($docPages); $path.='/'.random_int(2000,3000); $pt=pathTitle($path); $label=titleWords($w); if($pt!=='') $label.=' '.$pt; return ['label'=>$label,'url'=>$scheme.'://'.$urlHost.$port.$path,'path'=>$path,'section'=>$s]; }
+function buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$linkHost=null): array { if($linkHost!==null && $linkHost!==''){ $w=explode('.',$linkHost)[0]; $urlHost=$linkHost; } else { $w=pick($subWords); if(random_int(0,2)===0) $w.='-'.pick($subWords); $urlHost=$w.'.'.$baseDomain; } $s=pick($sections); $slug=trim(slugify(titleWords(pick($docPages))),'-'); if($slug==='') $slug=$s; $path='/'.$s.'/'.$slug.'/'.random_int(2000,3000); $pt=pathTitle($path); $label=titleWords($w); if($pt!=='') $label.=' '.$pt; return ['label'=>$label,'url'=>$scheme.'://'.$urlHost.$port.$path,'path'=>$path,'section'=>$s]; }
 // De-duplicates by URL (via $used, shared across lists) AND by label
 // within the returned list, so every visible title in one list is
 // distinct even though the trailing path number is not part of it.
@@ -600,16 +616,20 @@ $plans=[]; foreach(picks($planNames,3) as $pn){ $plans[]=['name'=>$pn,'price'=>r
 // BreadcrumbList, FAQPage, Product with rating + ItemList - maximum SEO
 // bait so crawlers treat the fake page as a real, rich result.
 // ---------------------------------------------------------------------------
-$ld=['@context'=>'https://schema.org','@graph'=>[
+$ldGraph=[
  ['@type'=>'Organization','name'=>$brand,'url'=>$canonical,'sameAs'=>array_column(array_slice($footerLinks,0,4),'url')],
  ['@type'=>'WebSite','name'=>$brand.' - '.$currentName,'url'=>$canonical,'potentialAction'=>['@type'=>'SearchAction','target'=>$canonical.'?q={search_term_string}','query-input'=>'required name=search_term_string']],
  ['@type'=>'WebPage','name'=>$title,'description'=>$description,'url'=>$canonical,'inLanguage'=>'en','datePublished'=>$publishedIso,'dateModified'=>$updatedIso,'primaryImageOfPage'=>$canonical],
- ['@type'=>'BlogPosting','headline'=>$heading,'description'=>$description,'author'=>['@type'=>'Person','name'=>$author],'publisher'=>['@type'=>'Organization','name'=>$brand,'url'=>$canonical],'datePublished'=>$publishedIso,'dateModified'=>$updatedIso,'articleSection'=>$category,'keywords'=>implode(', ',$myKeywords),'wordCount'=>random_int(900,3200),'timeRequired'=>'PT'.$readMinutes.'M'],
+];
+// Homepage is a website, not an article: only non-home pages get the
+// BlogPosting node in their structured data.
+if(!$isHome) $ldGraph[]=['@type'=>'BlogPosting','headline'=>$heading,'description'=>$description,'author'=>['@type'=>'Person','name'=>$author],'publisher'=>['@type'=>'Organization','name'=>$brand,'url'=>$canonical],'datePublished'=>$publishedIso,'dateModified'=>$updatedIso,'articleSection'=>$category,'keywords'=>implode(', ',$myKeywords),'wordCount'=>random_int(900,3200),'timeRequired'=>'PT'.$readMinutes.'M'];
+$ld=['@context'=>'https://schema.org','@graph'=>array_merge($ldGraph,[
  ['@type'=>'BreadcrumbList','itemListElement'=>[['@type'=>'ListItem','position'=>1,'name'=>'Home','item'=>$scheme.'://'.$host.$port.'/'],['@type'=>'ListItem','position'=>2,'name'=>ucwords($category),'item'=>$canonical],['@type'=>'ListItem','position'=>3,'name'=>$currentName,'item'=>$canonical]]],
  ['@type'=>'FAQPage','mainEntity'=>array_map(fn($f)=>['@type'=>'Question','name'=>$f[0],'acceptedAnswer'=>['@type'=>'Answer','text'=>$f[1]]],$myFaqs)],
  ['@type'=>'Product','name'=>$brand.' '.ucwords($topic),'description'=>$description,'brand'=>['@type'=>'Brand','name'=>$brand],'aggregateRating'=>['@type'=>'AggregateRating','ratingValue'=>$rating,'reviewCount'=>$reviewCount],'offers'=>['@type'=>'Offer','price'=>$planPrice,'priceCurrency'=>'USD','availability'=>'https://schema.org/InStock','url'=>$canonical]],
  ['@type'=>'ItemList','name'=>'Explore '.$brand,'itemListElement'=>array_map(fn($i,$l)=>['@type'=>'ListItem','position'=>$i+1,'name'=>$l['label'].' '.$l['path'],'url'=>$l['url']],array_keys(array_slice($links,0,12)),array_slice($links,0,12))],
-]];
+])];
 $ldJson=json_encode($ld, JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
 
 // Response headers: never cache (every load must be a fresh page) and a
@@ -632,12 +652,12 @@ header('Link: <'.$canonical.'>; rel="canonical"');
 <meta name="theme-color" content="#0f172a"><meta name="category" content="<?=e($category)?>">
 <link rel="canonical" href="<?=e($canonical)?>">
 <link rel="alternate" hreflang="en" href="<?=e($canonical)?>"><link rel="alternate" hreflang="x-default" href="<?=e($canonical)?>">
-<meta property="og:type" content="article"><meta property="og:title" content="<?=e($title)?>"><meta property="og:description" content="<?=e($description)?>">
+<meta property="og:type" content="<?=$isHome?'website':'article'?>"><meta property="og:title" content="<?=e($title)?>"><meta property="og:description" content="<?=e($description)?>">
 <meta property="og:url" content="<?=e($canonical)?>"><meta property="og:site_name" content="<?=e($brand)?>"><meta property="og:locale" content="en_US">
-<meta property="article:published_time" content="<?=e($publishedIso)?>"><meta property="article:modified_time" content="<?=e($updatedIso)?>">
+<?php if(!$isHome): ?><meta property="article:published_time" content="<?=e($publishedIso)?>"><meta property="article:modified_time" content="<?=e($updatedIso)?>">
 <meta property="article:author" content="<?=e($author)?>"><meta property="article:section" content="<?=e($category)?>">
 <?php foreach($myTags as $t): ?><meta property="article:tag" content="<?=e($t)?>">
-<?php endforeach; ?>
+<?php endforeach; ?><?php endif; ?>
 <meta name="twitter:card" content="summary"><meta name="twitter:title" content="<?=e($title)?>"><meta name="twitter:description" content="<?=e($description)?>">
 <script type="application/ld+json"><?= $ldJson ?></script>
 <style>*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#0f172a;color:#e2e8f0}.wrap{max-width:860px;margin:0 auto;padding:32px 24px 64px}.brand{color:#38bdf8;font-weight:700;letter-spacing:1px;font-size:14px;text-transform:uppercase}h1{font-size:34px;line-height:1.25;margin:12px 0 20px;color:#fff}h2{font-size:21px;color:#fff;margin:32px 0 12px}h3{font-size:17px;color:#fff;margin:20px 0 8px}p{line-height:1.7;color:#cbd5e1;margin:0 0 16px}.btn{display:inline-block;margin:16px 0 32px;padding:14px 30px;font-size:17px;font-weight:700;color:#fff;background:#2563eb;border-radius:10px;text-decoration:none}.meta{color:#94a3b8;font-size:14px;margin:-8px 0 24px;line-height:1.6}ul.links{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:1fr 1fr;gap:8px 24px}ul.links a{color:#94a3b8;text-decoration:none;font-size:15px}.box{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:4px 20px 12px;margin:24px 0}.box a,.wrap a{color:#7dd3fc}nav a{margin-right:14px;color:#cbd5e1;text-decoration:none;font-size:14px}figure{margin:24px 0}figure img{width:100%;height:auto;border-radius:12px;display:block}figcaption{color:#94a3b8;font-size:13px;margin-top:8px}.gallery{display:grid;grid-template-columns:1fr 1fr;gap:12px}.gallery img{width:100%;height:auto;border-radius:10px}.cards{display:grid;grid-template-columns:1fr 1fr;gap:16px}.card{background:#1e293b;border:1px solid #334155;border-radius:12px;overflow:hidden}.card img{width:100%;height:auto;display:block}.card div{padding:12px 16px}.tags a{display:inline-block;background:#1e293b;border:1px solid #334155;border-radius:999px;padding:6px 12px;margin:4px;color:#cbd5e1;text-decoration:none;font-size:13px}table{width:100%;border-collapse:collapse}td,th{border-bottom:1px solid #334155;padding:10px;text-align:left;color:#cbd5e1}footer{margin-top:48px;color:#475569;font-size:13px}footer a{color:#94a3b8;text-decoration:none;margin-right:10px}</style>
@@ -672,13 +692,13 @@ header('Link: <'.$canonical.'>; rel="canonical"');
 
 <section><h2>Tags and topics</h2><div class="tags"><?php foreach($myTags as $t): $tl=$extraLinks[random_int(0,count($extraLinks)-1)]; ?><a href="<?=e($tl['url'])?>" rel="tag"><?=e($t)?></a><?php endforeach; ?></div></section>
 
-<section><h2>Service status and numbers</h2><p><?=e(pick($statusLines))?>. Uptime <?=random_int(99,100)?>.<?=random_int(10,99)?>% &middot; <?=number_format(random_int(1200,98000))?> sites hosted &middot; Nearest data centre: <?=e(pick($locations))?> &middot; Response time: <?=random_int(12,240)?> ms &middot; Tagline: <?=e(pick($taglines))?></p></section>
+<section><h2>Service status and numbers</h2><p><?=e(pick($statusLines))?>. Uptime 98.<?=random_int(10,99)?>% &middot; <?=number_format(random_int(1200,98000))?> sites hosted &middot; Nearest data centre: <?=e(pick($locations))?> &middot; Response time: <?=random_int(12,240)?> ms &middot; Tagline: <?=e(pick($taglines))?></p></section>
 </article></main>
 <aside><h2>Popular guides</h2><p>Read our guide to <?=e(pick($blogTopics))?>, learn about <?=e(pick($docPages))?>, or browse the <?=e(pick($sections))?> section.</p><h2>Comments (<?=e((string)$commentCount)?>)</h2><p>Join the discussion. Last activity <?=e($updated)?>.</p></aside>
 <?php /* Honeypot payoff: after a form submission, show the green "Login successful" popup (auto-hides after 5s). The matching maze_session cookie was already set in SECTION 6. */ ?>
 <?php if (!empty($loginSuccess)): ?><div id="hploginok" role="alert" style="position:fixed;top:16px;right:16px;background:#1a7f37;color:#fff;padding:12px 18px;border-radius:8px;z-index:9999;font-family:sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.3)">Login successful</div><script>setTimeout(function(){var e=document.getElementById('hploginok');if(e){e.style.display='none';}},5000);</script><?php endif; ?>
 <?php /* The hidden honeypot login form: positioned far off-screen, never shown to humans. Field order is deliberate - Website, Login email, Login username, Login password, Full name, Message - so form-filling bots treat it as a real login. Rendered only when the group is under 5 submissions AND the visitor sent no maze_session cookie. */ ?>
-<?php if (!empty($showHiddenForm)): ?><form class="hpform" method="post" action="" style="position:absolute;left:-9999px;top:-9999px" aria-hidden="true"><input type="hidden" name="contact_form" value="1"><label>Website <input type="url" name="website" tabindex="-1" autocomplete="off"></label><label>Login email <input type="email" name="email" tabindex="-1" autocomplete="off"></label><label>Login username <input type="text" name="username" tabindex="-1" autocomplete="off"></label><label>Login password <input type="password" name="password" tabindex="-1" autocomplete="off"></label><label>Full name <input type="text" name="name" tabindex="-1" autocomplete="off"></label><label>Message <textarea name="message" tabindex="-1"></textarea></label><button type="submit" tabindex="-1">Send enquiry</button></form><?php endif; ?>
+<?php if (!empty($showHiddenForm)): ?><form class="hpform" method="post" action="" style="position:absolute;left:-9999px;top:-9999px" aria-hidden="true"><input type="hidden" name="login_form" value="1"><label>Website <input type="url" name="website" tabindex="-1" autocomplete="off"></label><label>Login email <input type="email" name="email" tabindex="-1" autocomplete="email"></label><label>Login username <input type="text" name="username" tabindex="-1" autocomplete="username"></label><label>Login password <input type="password" name="password" tabindex="-1" autocomplete="current-password"></label><label>Full name <input type="text" name="name" tabindex="-1" autocomplete="off"></label><label>Message <textarea name="message" tabindex="-1"></textarea></label><button type="submit" tabindex="-1">Log in</button></form><?php endif; ?>
 <?php /* Footer: 40 maze links under a "Sitemap" heading, each on its OWN random subdomain (see $footerSitemapLinks above), copyright line, random page reference. */ ?>
 <footer><h2 style="font-size:16px">Sitemap</h2><?php foreach($footerSitemapLinks as $l): ?><a href="<?=e($l['url'])?>"><?=e($l['label'])?></a><?php endforeach; ?><p>&copy; <?=date('Y')?> <a href="<?=e($hashLink['url'])?>"><?=e($brand)?></a>. All rights reserved. &middot; Last updated <?=e($updated)?> &middot; Ref <?=e($pageRef)?> &middot; <?=e($category)?> &middot; <?=e(implode(' | ',array_slice($myTags,0,5)))?></p></footer>
 </div></body></html>
