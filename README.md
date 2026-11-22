@@ -20,6 +20,10 @@
 | facebookexternalhit | 202 | 0 | 76 | robots.txt |
 | Fake old-Chrome scanner fleet | 3,632 | 0 | 61 | favicon.ico |
 | Credential hunters | 3,342 | 0 | 153 | Probing for /.env, firebase keys and similar files that don't exist here |
+| API hammerer (fake Chrome 147) | 794 | 0 | 22 — mostly from `216.167.0.0/16` (NTT America, Los Angeles, US; operator unknown) | API docs — 792 of its 794 hits went straight to /api, in two short bursts |
+| XML Sitemaps Generator | 505 | 0 | 1 — all from `85.92.66.148` (xml-sitemaps.com's own server, London, UK) | Careers, Marketplace, Help centre |
+| meta-webindexer | 59 | 0 | 35 — all from `57.141.0.0/16` (Meta, Ashburn, Virginia, US) | Pricing, Resources, Status |
+| Claude-User | 9 | 0 | 4 — all from `160.79.106.0/24` (Anthropic, Columbus, Ohio, US) | robots.txt |
 
 **What they were looking for:** robots.txt **21,186** · Tutorials **4,821** · Developer pages **4,519** · API docs **3,589** · sitemap.xml **3,111** · Docs **3,033**
 
