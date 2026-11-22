@@ -1,6 +1,9 @@
 name: Refresh page stats
 
-# Manual trigger only: recounts the maze logs in logs/ and rewrites the
+# Manual fallback: recounts the maze logs in logs/ and rewrites the
+# (Download_Logs.yml now runs the same script automatically on every
+# 15-minute log download; this workflow remains for manual refreshes.)
+# Original note: recounts the maze logs in logs/ and rewrites the
 # stats panel on the GitHub Pages page (docs/index.html) AND the stats
 # section in README.md from the same counts, then commits both files in
 # one commit. Run it from the Actions tab whenever fresh logs have been
