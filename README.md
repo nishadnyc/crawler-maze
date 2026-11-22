@@ -197,20 +197,44 @@ Behaviour:
       "form_posts":[ {"ts":…, "host":"…", "path":"…",
                       "data":{"website":"…","email":"…","username":"…","password":"…","name":"…","message":"…"}} ]
   } },
-  "bans": { "ip:… / subnet:… / agent:…": {"since":…, "until":…, "user_agent":"…"} }
+  "bans": { "ip:… / subnet:… / group:…": {"since":…, "until":…, "user_agent":"…"} }
 }
 ```
 
 `.maze-bans.json` is the same `bans` shape at top level, plus `hits` /
 `last_hit` counters incremented when a banned visitor keeps knocking.
 
+## First-seen group identity (the `maze_visit` cookie)
+
+A visitor's **group is the /16 subnet they were first seen in** — not their
+bot name (names are unreliable and changeable; agent stats are logged for
+information only and never group or ban anyone).
+
+- On the **first visit** (no cookie), the script sets a `maze_visit` cookie
+  whose value is `<first-seen subnet>__<random token>`, e.g.
+  `216.73.0.0_16__ab12…`. The server stores nothing about the cookie.
+  (The first cookie version was `<agent>__<subnet>__<token>`; its middle
+  part is still accepted as the group.)
+- On later visits the group is read **out of the cookie** (the subnet is
+  validated against the IPv4 /16 shape first). Counting, the daily log
+  file, and bans all follow that group — so a bot returning from a rotated
+  IP with its cookie is counted and banned as its original group. Its
+  current subnet is recorded in the group file's `alias_subnets`.
+- Verified live 2026-11-22: ClaudeBot stores and returns the cookie (one
+  token resent on 3 separate requests); GPTBot returned no cookie in the
+  same window.
+- Ban keys are `ip:<ip>`, `subnet:<group subnet>` and `group:<group subnet>`:
+  a visitor is blocked if **either** their IP/subnet **or** the group in
+  their cookie is banned. Banned hits are still logged (`banned_hits`).
+
 ## Key numbers (all in the code, §5–§6)
 
 | Constant | Value |
 |---|---|
-| Rate window | 1 hour (3600 s), per IP / subnet / agent |
-| Rate limit | 200 hits per window → ban |
+| Rate window | 1 hour (3600 s), per IP / first-seen group |
+| Rate limit | 2000 hits per window → ban |
 | Ban length | 600 s (10 min), 429 + `Retry-After` |
+| Visit cookie | `maze_visit`, 30 days, path `/`, value = first-seen group + token |
 | Idle pruning | entries idle ≥ 7200 s dropped from today's log |
 | Honeypot logging | first 5 submissions per group per day |
 | Logged field trim | 120 chars per field |

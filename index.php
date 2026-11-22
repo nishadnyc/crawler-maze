@@ -1,4 +1,27 @@
 <?php
+// COOKIE PROBE + GROUP TAG (2026-11-22, Nishad request): on a visitor's
+// FIRST visit, give them a maze_visit cookie whose value carries their
+// GROUP NAME - the agent key (bot:<name> for known crawlers, ua:<hash>
+// otherwise) plus their /16 subnet - followed by a random token. Server
+// stores nothing about the cookie. If the visitor later returns from a
+// rotated IP but sends this cookie back, the group name inside it gives
+// away which group they really belong to.
+// (IP/UA/subnet/agent are computed again in SECTION 4 for the main flow;
+// this early copy exists only so the cookie can be set at the very top.)
+$probeIp = trim(explode(',', $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '')[0]);
+if ($probeIp === '') $probeIp = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+$probeUa = substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 200);
+if (filter_var($probeIp, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) { $pp = explode('.', $probeIp); $probeSubnet = $pp[0] . '.' . $pp[1] . '.0.0/16'; }
+elseif (filter_var($probeIp, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) { $pp = explode(':', $probeIp); $probeSubnet = implode(':', array_slice($pp, 0, 3)) . '::/48'; }
+else $probeSubnet = 'unknown';
+$probeAgent = 'ua:' . substr(md5($probeUa), 0, 12);
+foreach (['OAI-SearchBot','GPTBot','ChatGPT-User','ClaudeBot','Claude-User','anthropic-ai','Googlebot','Google-Extended','bingbot','PerplexityBot','CCBot','Bytespider','Applebot','Meta-ExternalAgent','Amazonbot','cohere-ai','Diffbot','ImagesiftBot','Omgilibot','FacebookBot','Twitterbot','LinkedInBot','SemrushBot','AhrefsBot','MJ12bot','DotBot','PetalBot','DataForSeoBot','Barkrowler','l9scan','LeakIX'] as $kb) { if (stripos($probeUa, $kb) !== false) { $probeAgent = 'bot:' . $kb; break; } }
+if (empty($_COOKIE['maze_visit'])) {
+    // The group IS the first-seen subnet - no bot name in the cookie:
+    // names are unreliable, the first-seen group is the identity.
+    $groupTag = preg_replace('/[^A-Za-z0-9_.-]/', '_', $probeSubnet);
+    setcookie('maze_visit', $groupTag . '__' . bin2hex(random_bytes(8)), time() + 2592000, '/');
+}
 /*
  * ============================================================================
  *  MAZE - wildcard fake-site generator (single file, no dependencies)
@@ -133,6 +156,21 @@ else $visitorSubnet = 'unknown';
 $knownBots = ['OAI-SearchBot','GPTBot','ChatGPT-User','ClaudeBot','Claude-User','anthropic-ai','Googlebot','Google-Extended','bingbot','PerplexityBot','CCBot','Bytespider','Applebot','Meta-ExternalAgent','Amazonbot','cohere-ai','Diffbot','ImagesiftBot','Omgilibot','FacebookBot','Twitterbot','LinkedInBot','SemrushBot','AhrefsBot','MJ12bot','DotBot','PetalBot','DataForSeoBot','Barkrowler','l9scan','LeakIX'];
 $agentKey = 'ua:' . substr(md5($visitorUa), 0, 12);
 foreach ($knownBots as $kb) { if (stripos($visitorUa, $kb) !== false) { $agentKey = 'bot:' . $kb; break; } }
+// First-seen group (Nishad's rule): if this visitor carries a maze_visit
+// cookie, the group baked into it on their FIRST visit is their group for
+// counting, logging and banning - not today's IP subnet, and not the bot
+// name (names are unreliable and changeable). Cookie format now:
+// <subnet>__<token>; the first version was <agent>__<subnet>__<token>,
+// whose middle part is the subnet - both are accepted. The subnet inside
+// is validated against the IPv4 /16 shape before it is trusted.
+$cookieGroupSubnet = '';
+if (!empty($_COOKIE['maze_visit'])) {
+    $cp = explode('__', (string)$_COOKIE['maze_visit']);
+    $cand = count($cp) >= 3 ? (string)$cp[1] : (string)($cp[0] ?? '');
+    if (preg_match('/^\d{1,3}\.\d{1,3}\.0\.0_16$/', $cand)) $cookieGroupSubnet = str_replace('_16', '/16', $cand);
+}
+$groupSubnet = $cookieGroupSubnet !== '' ? $cookieGroupSubnet : $visitorSubnet;
+$groupKey = 'group:' . $groupSubnet;
 // ---------------------------------------------------------------------------
 // SECTION 5 - Bans: check first, enforce fast
 // $trackingFile is a legacy leftover (the old single-file tracker); the live
@@ -147,7 +185,7 @@ $shouldBlock = false;
 $banSeconds = 600;
 $retryAfter = 3600;
 $banFile = __DIR__ . '/.maze-bans.json';
-$banKeys = ['ip:' . $visitorIp, 'subnet:' . $visitorSubnet, 'agent:' . $agentKey];
+$banKeys = ['ip:' . $visitorIp, 'subnet:' . $groupSubnet, $groupKey];
 // Fast path: read the ban file (shared lock) and see whether this visitor's
 // IP, subnet or agent key has an unexpired ban.
 if (is_file($banFile)) {
@@ -180,7 +218,7 @@ if ($shouldBlock) {
         }
         fclose($bf3);
     }
-    $groupFileEarly = __DIR__ . '/logs/' . str_replace(['/', ':', '*'], '_', $visitorSubnet) . '_' . $todayStr . '.json';
+    $groupFileEarly = __DIR__ . '/logs/' . str_replace(['/', ':', '*'], '_', $groupSubnet) . '_' . $todayStr . '.json';
     if (is_file($groupFileEarly)) {
         $gf = @fopen($groupFileEarly, 'c+');
         if ($gf) {
@@ -224,7 +262,7 @@ $logsDir = __DIR__ . '/logs';
 if (!is_dir($logsDir)) @mkdir($logsDir, 0775, true);
 $logsHtaccess = $logsDir . '/.htaccess';
 if (!is_file($logsHtaccess)) @file_put_contents($logsHtaccess, "Require all denied\nDeny from all\n");
-$subnetFile = $logsDir . '/' . str_replace(['/', ':', '*'], '_', $visitorSubnet) . '_' . $todayStr . '.json';
+$subnetFile = $logsDir . '/' . str_replace(['/', ':', '*'], '_', $groupSubnet) . '_' . $todayStr . '.json';
 $sf = @fopen($subnetFile, 'c+');
 if ($sf) {
     if (flock($sf, LOCK_EX)) {
@@ -234,7 +272,8 @@ if ($sf) {
         if (!isset($data['ips']) || !is_array($data['ips'])) $data['ips'] = [];
         if (!isset($data['agents']) || !is_array($data['agents'])) $data['agents'] = [];
         if (!isset($data['groups']) || !is_array($data['groups'])) $data['groups'] = [];
-        $data['subnet'] = $visitorSubnet;
+        $data['subnet'] = $groupSubnet;
+        if ($visitorSubnet !== $groupSubnet) { if (!isset($data['alias_subnets']) || !is_array($data['alias_subnets'])) $data['alias_subnets'] = []; $data['alias_subnets'][$visitorSubnet] = (int)($data['alias_subnets'][$visitorSubnet] ?? 0) + 1; }
         if (!isset($data['first_seen'])) $data['first_seen'] = $nowTs;
         $data['last_seen'] = $nowTs;
         if (!isset($data['window_start']) || $nowTs - (int)$data['window_start'] >= 3600) { $data['window_start'] = $nowTs; $data['count'] = 1; }
@@ -289,11 +328,11 @@ if ($sf) {
         $showHiddenForm = ($formCount < 5) && empty($_COOKIE['maze_session']);
         unset($grp);
         // Housekeeping: drop ips/agents/groups idle for 2+ hours so today's
-        // file stays small, then apply the rate limit: more than 200 hits in
-        // the current 1-hour window from this IP, subnet OR agent group
-        // triggers a 10-minute ban for all three keys.
+        // file stays small, then apply the rate limit: more than 2000 hits in
+        // the current 1-hour window from this IP or this first-seen
+        // GROUP triggers a 10-minute ban for the IP and the group keys.
         foreach (['ips', 'agents', 'groups'] as $bk) { foreach ($data[$bk] as $k => $v) { if ($nowTs - (int)($v['last_seen'] ?? $nowTs) >= 7200) unset($data[$bk][$k]); } }
-        if ($ipCount > 200 || $subnetCount > 200 || $agentCount > 200) $shouldBlock = true;
+        if ($ipCount > 2000 || $subnetCount > 2000) $shouldBlock = true;
         if ($shouldBlock) {
             if (!isset($data['bans']) || !is_array($data['bans'])) $data['bans'] = [];
             foreach ($banKeys as $bk) $data['bans'][$bk] = ['since' => $nowTs, 'until' => $nowTs + $banSeconds, 'user_agent' => $visitorUa];
