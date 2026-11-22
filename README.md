@@ -3,8 +3,6 @@
 [![Docker](https://img.shields.io/badge/Docker-supported-2496ED?logo=docker&logoColor=white)](https://github.com/nishadnyc/crawler-maze/blob/main/DOCKER.md)
 [![Open Source](https://img.shields.io/badge/Open%20Source-MIT-green?logo=opensourceinitiative&logoColor=white)](https://github.com/nishadnyc/crawler-maze/blob/main/LICENSE)
 
-# Crawler Maze — a maze for AI crawlers
-
 <!-- STATS:START -->
 ## One day in the maze
 
@@ -33,6 +31,8 @@ Honeypot login form: **0 submissions** — nobody took that bait.
 
 *Every one of those hits was a page that doesn't exist, for a company that doesn't exist. They kept reading anyway.*
 <!-- STATS:END -->
+
+# Crawler Maze — a maze for AI crawlers
 
 ## The idea
 
