@@ -38,6 +38,9 @@ jobs:
             "sudo tar -czf - -C ${{ vars.SERVER_PATH }} ." \
             | tar -xzf - -C .
 
+      - name: Recount logs and update stats in README and Pages
+        run: python3 scripts/refresh_stats.py
+
       - name: Commit and push changes
         run: |
           git config user.name "${{ github.actor }}"

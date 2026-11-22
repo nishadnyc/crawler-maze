@@ -10,18 +10,18 @@
 
 *What the logs say · Sunday, November 22, 2026 · counted from the maze's own logs.*
 
-**23,176** crawler hits served · **808** unique IPs · **241** subnet log files · **2,082** banned hits
+**52,141** crawler hits served · **1,032** unique IPs · **297** subnet log files · **49,368** banned hits
 
 | Crawler | Requests | Banned hits | IPs | What it was after |
 | --- | ---: | ---: | --- | --- |
-| ClaudeBot | 15,491 | 573 | 1 — all from `216.73.216.60` | API docs, Developer pages, Tutorials |
-| GPTBot | 15 | 1,418 | 13 | Tools, Features, Community |
-| OAI-SearchBot | 192 | 91 | 129 | robots.txt |
-| facebookexternalhit | 199 | 0 | 73 | robots.txt |
-| Fake old-Chrome scanner fleet | 2,659 | 0 | 61 | favicon.ico |
-| Credential hunters | 2,308 | 0 | 144 | Probing for /.env, firebase keys and similar files that don't exist here |
+| ClaudeBot | 28,116 | 573 | 1 — all from `216.73.216.60` | Tutorials, Developer pages, robots.txt |
+| GPTBot | 1,042 | 47,878 | 250 | Newsroom, Features, Services |
+| OAI-SearchBot | 13,264 | 917 | 200 | robots.txt |
+| facebookexternalhit | 202 | 0 | 76 | robots.txt |
+| Fake old-Chrome scanner fleet | 3,628 | 0 | 61 | favicon.ico |
+| Credential hunters | 3,286 | 0 | 149 | Probing for /.env, firebase keys and similar files that don't exist here |
 
-**What they were looking for:** API docs **2,791** · Developer pages **2,553** · Tutorials **2,224** · robots.txt **2,016** · Docs **1,506** · sitemap.xml **1,140**
+**What they were looking for:** robots.txt **16,924** · Tutorials **4,226** · Developer pages **4,106** · API docs **2,833** · sitemap.xml **2,702** · Docs **2,687**
 
 Honeypot login form: **0 submissions** — nobody took that bait.
 
