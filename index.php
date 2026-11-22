@@ -480,12 +480,27 @@ if ($cookieLinkDomain === '') {
 }
 
 // Build one maze URL: section + optional doc page + trailing random
-// number, on the visitor's cookie link domain when one is given (label comes from
-// that domain's first label), otherwise on a random sibling subdomain
-// (the sitemap builder uses this and then overrides the host anyway).
+// number, on the visitor's cookie link domain when one is given,
+// otherwise on a random sibling subdomain (the sitemap.xml builder
+// uses this and then overrides the host anyway).
 // Returns label, full URL, path, section.
-function buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$linkHost=null): array { if($linkHost!==null && $linkHost!==''){ $w=explode('.',$linkHost)[0]; $urlHost=$linkHost; } else { $w=pick($subWords); if(random_int(0,2)===0) $w.='-'.pick($subWords); $urlHost=$w.'.'.$baseDomain; } $s=pick($sections); $path='/'.$s; if(in_array($s,['docs','guides','tutorials','blog','knowledge-base'],true)&&random_int(0,1)) $path.='/'.pick($docPages); if(random_int(0,3)===0) $path.='/'.pick($docPages); $path.='/'.random_int(2000,3000); return ['label'=>ucwords(str_replace('-',' ',$w)),'url'=>$scheme.'://'.$urlHost.$port.$path,'path'=>$path,'section'=>$s]; }
-function uniqueLinks($n,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,&$used,$linkHost=null): array { $out=[];$tries=0; while(count($out)<$n&&$tries<$n*20){ $tries++; $c=buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$linkHost); if(isset($used[$c['url']])) continue; $used[$c['url']]=true; $out[]=$c; } return $out; }
+//
+// LINK TITLES (Nishad 2026-11-22 follow-up): the label is the host's
+// first label titlecased PLUS a title built from the link's OWN path
+// (all non-numeric segments, titlecased) - e.g. host ahhsh.* with path
+// /solutions/2518 gives "Ahhsh Solutions", and /docs/docs-guide/
+// resources-hub/2003 gives "Ahhsh Docs Docs Guide Resources Hub".
+// Deriving the label from the host alone made every link on the
+// cookie domain read identically ("Ahhsh Ahhsh Ahhsh ..."); the URL
+// itself is unchanged - Explore/main links still stay on the
+// visitor's cookie domain, only their visible titles now differ.
+function titleWords($slug): string { return ucwords(str_replace('-',' ',(string)$slug)); }
+function pathTitle($path): string { $parts=[]; foreach(explode('/',trim((string)$path,'/')) as $seg){ if($seg===''||is_numeric($seg)) continue; $parts[]=titleWords($seg); } return implode(' ',$parts); }
+function buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$linkHost=null): array { if($linkHost!==null && $linkHost!==''){ $w=explode('.',$linkHost)[0]; $urlHost=$linkHost; } else { $w=pick($subWords); if(random_int(0,2)===0) $w.='-'.pick($subWords); $urlHost=$w.'.'.$baseDomain; } $s=pick($sections); $path='/'.$s; if(in_array($s,['docs','guides','tutorials','blog','knowledge-base'],true)&&random_int(0,1)) $path.='/'.pick($docPages); if(random_int(0,3)===0) $path.='/'.pick($docPages); $path.='/'.random_int(2000,3000); $pt=pathTitle($path); $label=titleWords($w); if($pt!=='') $label.=' '.$pt; return ['label'=>$label,'url'=>$scheme.'://'.$urlHost.$port.$path,'path'=>$path,'section'=>$s]; }
+// De-duplicates by URL (via $used, shared across lists) AND by label
+// within the returned list, so every visible title in one list is
+// distinct even though the trailing path number is not part of it.
+function uniqueLinks($n,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,&$used,$linkHost=null): array { $out=[];$tries=0;$labels=[]; while(count($out)<$n&&$tries<$n*40){ $tries++; $c=buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$linkHost); if(isset($used[$c['url']])||isset($labels[$c['label']])) continue; $used[$c['url']]=true; $labels[$c['label']]=true; $out[]=$c; } return $out; }
 
 $brand=pick($brands); $topic=pick($topics); $category=pick($categories);
 $title='Welcome to '.$currentName.' - '.ucwords($topic).' | '.$brand.' '.ucwords(pick($topics));
@@ -513,16 +528,18 @@ $navLinks=uniqueLinks(8,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,
 // exception to the per-visitor cookie domain above. Each footer sitemap
 // link is built with NO link host, so buildUrl() gives it a fresh random
 // sibling subdomain, and hosts are de-duplicated so all 40 are on
-// DISTINCT subdomains. The label is the link's own host, so no two
-// entries read the same. Root cause of the old duplicate labels:
-// buildUrl() derives the label from the link host's first word, so when
-// every footer link shared $linkDomain they all got the visited site's
-// name ("Ahhsh Ahhsh Ahhsh ...") and only their paths differed.
-// Purpose: a crawler that never returns the maze_link cookie (so its
-// main links stay pinned to the visited domain) still hops to a new
-// random subdomain for every sitemap link it follows.
-$footerSitemapLinks=[]; $footerHosts=[]; $footerTries=0;
-while(count($footerSitemapLinks)<40 && $footerTries<800){ $footerTries++; $c=buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,null); $fh=parse_url($c['url'],PHP_URL_HOST); if(!$fh || isset($footerHosts[$fh]) || isset($used[$c['url']])) continue; $footerHosts[$fh]=true; $used[$c['url']]=true; $c['label']=$fh; $footerSitemapLinks[]=$c; }
+// DISTINCT subdomains. Purpose: a crawler that never returns the
+// maze_link cookie (so its main links stay pinned to the visited
+// domain) still hops to a new random subdomain for every sitemap
+// link it follows.
+// TITLE RULE (Nishad 2026-11-22 follow-up): the visible title is
+// ONLY the first segment of that link's own subdomain, titlecased -
+// e.g. resources-zone.nishad.top shows "Resources Zone", never the
+// full domain. Titles stay distinct because the subdomains are
+// de-duplicated (labels are de-duplicated too, as a belt-and-braces
+// check - a repeated first segment is regenerated, not reused).
+$footerSitemapLinks=[]; $footerHosts=[]; $footerLabels=[]; $footerTries=0;
+while(count($footerSitemapLinks)<40 && $footerTries<800){ $footerTries++; $c=buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,null); $fh=parse_url($c['url'],PHP_URL_HOST); if(!$fh || isset($footerHosts[$fh]) || isset($used[$c['url']])) continue; $flabel=titleWords(explode('.',$fh)[0]); if(isset($footerLabels[$flabel])) continue; $footerHosts[$fh]=true; $footerLabels[$flabel]=true; $used[$c['url']]=true; $c['label']=$flabel; $footerSitemapLinks[]=$c; }
 
 
 $planName=pick($planNames); $planPrice=random_int(1,29).'.'.pick(['00','49','99','50']);
