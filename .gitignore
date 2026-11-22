@@ -1,7 +1,0 @@
-# Runtime data - generated on the server, never committed
-logs/*.json
-.maze-bans.json
-.maze-visitors.json
-old-files/*.json
-index.php.bak-*
-*.bak-*
