@@ -1,0 +1,12 @@
+# Keep runtime data and local clutter out of the build context.
+.git
+logs/*.json
+.maze-bans.json
+.maze-visitors.json
+index.php.bak-*
+*.bak-*
+docs
+README.md
+DOCKER.md
+docker-compose.yml
+.github
