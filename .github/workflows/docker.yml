@@ -1,0 +1,91 @@
+name: Docker build & smoke test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  docker-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Build the image
+        run: docker build -t crawler-maze .
+
+      - name: Run the container
+        run: docker run -d --name maze -p 8080:80 crawler-maze
+
+      - name: Wait for the maze to answer
+        run: |
+          for i in $(seq 1 30); do
+            if curl -s -o /dev/null http://localhost:8080/; then
+              echo "Maze is up after ${i} attempt(s)."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Maze never answered on port 8080."
+          docker logs maze
+          exit 1
+
+      - name: Smoke tests
+        run: |
+          set -u
+          fail=0
+
+          check() {
+            desc="$1"; expected="$2"; actual="$3"
+            if [ "$actual" = "$expected" ]; then
+              echo "PASS: $desc (got $actual)"
+            else
+              echo "FAIL: $desc (expected $expected, got $actual)"
+              fail=1
+            fi
+          }
+
+          # Homepage serves real maze content.
+          body=$(curl -s http://localhost:8080/)
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/)
+          check "GET / status" 200 "$code"
+          if echo "$body" | grep -qi '<title>'; then
+            echo "PASS: GET / body contains maze content (a page <title>)"
+          else
+            echo "FAIL: GET / body has no <title> — not a maze page"
+            fail=1
+          fi
+
+          # Deep path only works if .htaccess routing fires (mod_rewrite +
+          # AllowOverride All). Apache itself would 404 this otherwise.
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/docs/getting-started/12345)
+          check "GET /docs/getting-started/12345 status (.htaccess proof)" 200 "$code"
+
+          # robots.txt is served by the maze script itself.
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/robots.txt)
+          check "GET /robots.txt status" 200 "$code"
+
+          # Extension paths that aren't real files get the maze's plain 404.
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/.env)
+          check "GET /.env status" 404 "$code"
+
+          # The hits above must have been logged as a dated JSON file.
+          if docker exec maze sh -c 'ls /var/www/html/logs/*_????-??-??.json >/dev/null 2>&1'; then
+            echo "PASS: dated log JSON exists in the container's logs/"
+            docker exec maze ls /var/www/html/logs/
+          else
+            echo "FAIL: no dated log JSON in the container's logs/"
+            docker exec maze ls -la /var/www/html/logs/ || true
+            fail=1
+          fi
+
+          exit $fail
+
+      - name: Container logs (on failure)
+        if: failure()
+        run: docker logs maze || true
+
+      - name: Stop the container
+        if: always()
+        run: docker rm -f maze || true
