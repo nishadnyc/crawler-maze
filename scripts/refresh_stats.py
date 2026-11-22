@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""Regenerate the stats panel in docs/index.html from the maze logs in logs/.
+"""Regenerate the stats in docs/index.html AND README.md from the maze logs.
 
 Counts the most recent day present in the log filenames
 (<subnet>_16_<YYYY-MM-DD>.json) and rewrites everything between the
-<!-- STATS:START --> and <!-- STATS:END --> markers, plus the panel's
-heading/subtitle. Run by the "Refresh page stats" workflow (manual trigger);
-can also be run locally:  python3 scripts/refresh_stats.py
+<!-- STATS:START --> and <!-- STATS:END --> markers in both files — the
+HTML panel on the GitHub Pages page, plus the panel's heading/subtitle,
+and the native Markdown stats section in the README — from the same
+counts, so the two always agree. Run by the "Refresh page stats"
+workflow (manual trigger); can also be run locally:
+    python3 scripts/refresh_stats.py
 """
 import glob
 import json
@@ -17,6 +20,7 @@ from datetime import datetime
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOGS = os.path.join(ROOT, "logs")
 PAGE = os.path.join(ROOT, "docs", "index.html")
+README = os.path.join(ROOT, "README.md")
 
 CLAUDE_SVG = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><defs><path id="cray" d="M12 1.5 L13.4 10.6 L12 12 L10.6 10.6 Z"/></defs><g fill="#D97757"><use href="#cray"/><use href="#cray" transform="rotate(45 12 12)"/><use href="#cray" transform="rotate(90 12 12)"/><use href="#cray" transform="rotate(135 12 12)"/><use href="#cray" transform="rotate(180 12 12)"/><use href="#cray" transform="rotate(225 12 12)"/><use href="#cray" transform="rotate(270 12 12)"/><use href="#cray" transform="rotate(315 12 12)"/><circle cx="12" cy="12" r="1.6"/></g></svg>'
 OPENAI_SVG = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><g fill="none" stroke="#e6edf3" stroke-width="1.7"><ellipse cx="12" cy="12" rx="4.2" ry="8.6"/><ellipse cx="12" cy="12" rx="4.2" ry="8.6" transform="rotate(60 12 12)"/><ellipse cx="12" cy="12" rx="4.2" ry="8.6" transform="rotate(120 12 12)"/></g></svg>'
@@ -49,6 +53,21 @@ def fmt(n):
     return f"{n:,}"
 
 
+def md_label(sec):
+    """Human label for a section key in Markdown output."""
+    if sec in SECTION_LABELS:
+        return SECTION_LABELS[sec]
+    if "." in sec:
+        return sec
+    return sec.replace("-", " ").capitalize()
+
+
+def md_after(kind_sections, n=3):
+    """Top section labels a crawler was recorded going after."""
+    top = sorted(kind_sections.items(), key=lambda kv: -kv[1])[:n]
+    return ", ".join(md_label(k) for k, _ in top) if top else "—"
+
+
 def main():
     files = sorted(glob.glob(os.path.join(LOGS, "*_*.json")))
     dated = []
@@ -66,8 +85,10 @@ def main():
     day_ips = set()
     sections = {}
     bots = {k: {"hits": 0, "banned": 0, "ips": 0, "files": 0} for k in ("claude", "gpt", "oai", "fb", "fleet")}
+    bot_sections = {k: {} for k in bots}
     claude_ip_counts = {}
-    hunters = {"hits": 0, "ips": 0}
+    hunters = {"hits": 0, "banned": 0, "ips": 0}
+    honeypot = 0
 
     for path in day_files:
         try:
@@ -91,6 +112,8 @@ def main():
                 b["hits"] += t
                 b["banned"] += g.get("banned_hits", 0)
                 b["ips"] += g.get("unique_ips", 0)
+                for sec, c in (g.get("sections") or {}).items():
+                    bot_sections[kind][sec] = bot_sections[kind].get(sec, 0) + c
                 file_bots.add(kind)
                 if kind == "claude":
                     for ip, rec in (data.get("ips") or {}).items():
@@ -99,7 +122,14 @@ def main():
                 any(any(p in s for p in PROBES) for s in (g.get("sections") or {}))
             if probe:
                 hunters["hits"] += t
+                hunters["banned"] += g.get("banned_hits", 0)
                 hunters["ips"] += g.get("unique_ips", 0)
+            for key in ("form_submissions", "form_posts"):
+                v = g.get(key)
+                if isinstance(v, int):
+                    honeypot += v
+                elif isinstance(v, list):
+                    honeypot += len(v)
         for kind in file_bots:
             bots[kind]["files"] += 1
 
@@ -159,7 +189,62 @@ def main():
         html, count=1, flags=re.S,
     )
     open(PAGE, "w").write(html)
-    print(f"Refreshed panel for {day}: {fmt(total)} hits, {fmt(banned)} banned, {len(day_files)} files.")
+
+    # --- README.md: the same counts as a native Markdown stats section ---
+    md_rows = ""
+    c = bots["claude"]
+    if c["hits"]:
+        top_ip = max(claude_ip_counts, key=claude_ip_counts.get) if claude_ip_counts else ""
+        if c["ips"] <= 1 and top_ip:
+            ip_txt = f"1 — all from `{top_ip}`"
+        elif top_ip:
+            ip_txt = f"{fmt(c['ips'])} — top `{top_ip}`"
+        else:
+            ip_txt = fmt(c["ips"])
+        md_rows += f"| ClaudeBot | {fmt(c['hits'])} | {fmt(c['banned'])} | {ip_txt} | {md_after(bot_sections['claude'])} |\n"
+    g = bots["gpt"]
+    if g["hits"] or g["banned"]:
+        md_rows += f"| GPTBot | {fmt(g['hits'])} | {fmt(g['banned'])} | {fmt(g['ips'])} | {md_after(bot_sections['gpt'])} |\n"
+    o = bots["oai"]
+    if o["hits"]:
+        md_rows += f"| OAI-SearchBot | {fmt(o['hits'])} | {fmt(o['banned'])} | {fmt(o['ips'])} | {md_after(bot_sections['oai'])} |\n"
+    f = bots["fb"]
+    if f["hits"]:
+        md_rows += f"| facebookexternalhit | {fmt(f['hits'])} | {fmt(f['banned'])} | {fmt(f['ips'])} | {md_after(bot_sections['fb'])} |\n"
+    fl = bots["fleet"]
+    if fl["hits"]:
+        md_rows += f"| Fake old-Chrome scanner fleet | {fmt(fl['hits'])} | {fmt(fl['banned'])} | {fmt(fl['ips'])} | {md_after(bot_sections['fleet'])} |\n"
+    if hunters["hits"]:
+        md_rows += f"| Credential hunters | {fmt(hunters['hits'])} | {fmt(hunters['banned'])} | {fmt(hunters['ips'])} | Probing for /.env, firebase keys and similar files that don't exist here |\n"
+
+    looking = " · ".join(f"{md_label(k)} **{fmt(v)}**" for k, v in top_sections)
+    plural = "submission" if honeypot == 1 else "submissions"
+    md = f"""## One day in the maze
+
+*What the logs say · {pretty} · counted from the maze's own logs.*
+
+**{fmt(total)}** crawler hits served · **{fmt(len(day_ips))}** unique IPs · **{fmt(len(day_files))}** subnet log files · **{fmt(banned)}** banned hits
+
+| Crawler | Requests | Banned hits | IPs | What it was after |
+| --- | ---: | ---: | --- | --- |
+{md_rows}
+**What they were looking for:** {looking}
+
+Honeypot login form: **{fmt(honeypot)} {plural}** — nobody took that bait.
+
+*Every one of those hits was a page that doesn't exist, for a company that doesn't exist. They kept reading anyway.*"""
+
+    readme = open(README).read()
+    if "<!-- STATS:START -->" not in readme or "<!-- STATS:END -->" not in readme:
+        print("STATS markers not found in README.md", file=sys.stderr)
+        return 1
+    readme = re.sub(
+        r"<!-- STATS:START -->.*?<!-- STATS:END -->",
+        "<!-- STATS:START -->\n" + md + "\n<!-- STATS:END -->",
+        readme, flags=re.S,
+    )
+    open(README, "w").write(readme)
+    print(f"Refreshed panel + README for {day}: {fmt(total)} hits, {fmt(banned)} banned, {len(day_files)} files.")
     return 0
 
 
