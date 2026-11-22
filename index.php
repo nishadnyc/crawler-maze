@@ -412,6 +412,10 @@ if ($requestPath === '/favicon.ico') {
 // site that simply is not WordPress, so scanners lose interest.
 // (The hit was already logged/counted in SECTION 6 as usual.)
 $probePath = (bool)preg_match('#^/(wp-|xmlrpc\.php|\.env|\.git|phpinfo)#i', $requestPath);
+// Plus one simple blanket rule (Nishad 2026-11-22): ANY path ending in
+// .php (/database.php, /config.php, ...) is a probe - generated maze
+// paths never end in .php - so it gets the plain 404 too.
+if (str_ends_with(strtolower($requestPath), '.php')) $probePath = true;
 $mazePathOk = ($requestPath === '/' || $requestPath === '/robots.txt' || str_ends_with($requestPath, 'sitemap.xml'));
 if ($probePath) $mazePathOk = false;
 if (!$mazePathOk) {
