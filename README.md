@@ -1,3 +1,5 @@
+[![Docker build & smoke test](https://github.com/nishadnyc/crawler-maze/actions/workflows/docker.yml/badge.svg)](https://github.com/nishadnyc/crawler-maze/actions/workflows/docker.yml)
+
 # Crawler Maze — a maze for AI crawlers
 
 ![One morning in the maze — what the logs say](docs/proof.png)

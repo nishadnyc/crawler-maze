@@ -1,0 +1,13 @@
+# Spin up the whole maze with:  docker compose up --build
+# Then open http://localhost:8080 — every path is a maze page.
+services:
+  maze:
+    build: .
+    ports:
+      - "8080:80"
+    volumes:
+      # Crawler logs survive container rebuilds.
+      - maze-logs:/var/www/html/logs
+
+volumes:
+  maze-logs:
