@@ -441,9 +441,9 @@ if ($requestPath === '/favicon.ico') {
     // Per-host favicon (audit B8): colours + glyph shape from a hash
     // of the hostname - same host, same icon, forever; no file stored.
     $favPalettes = [[[15,23,42],[56,189,248]], [[15,23,42],[52,211,153]], [[15,23,42],[251,191,36]], [[15,23,42],[244,114,182]], [[15,23,42],[167,139,250]], [[15,23,42],[251,146,60]], [[56,189,248],[15,23,42]], [[52,211,153],[15,23,42]]];
-    $favSeed = crc32('fav|' . $host) & 0x7fffffff;
-    $favPal = $favPalettes[$favSeed % count($favPalettes)];
-    $favShape = intdiv($favSeed, count($favPalettes)) % 3;
+    $favHash = hash('sha256', 'fav|' . $host);
+    $favPal = $favPalettes[hexdec(substr($favHash, 0, 2)) % count($favPalettes)];
+    $favShape = hexdec(substr($favHash, 2, 2)) % 3;
     echo mazeFaviconIco($favPal[0], $favPal[1], $favShape);
     exit;
 }
