@@ -397,6 +397,14 @@ $externalHoneytrapDomains=[
     'recorded.twilightparadox.com',
     'cleo.chickenkiller.com',
 ];
+$isExternalHoneytrapDomain=in_array(strtolower($host),$externalHoneytrapDomains,true);
+// A visitor who lands ON one of the five: their random domain
+// generation must run on OUR domain (nishad.top), never on the
+// provider parent (mooo.com, chickenkiller.com, ...) - those random
+// subdomains are not ours and do not point at the maze. Without
+// this, a visit to cleo.chickenkiller.com turns the whole page
+// into *.chickenkiller.com links and nishad.top never appears.
+if($isExternalHoneytrapDomain){ $baseDomain='nishad.top'; }
 // Visitor identity: real IP (first X-Forwarded-For entry, set by the proxy),
 // user-agent string, and the visitor's /16 subnet (IPv6: /48). Crawlers
 // rotate individual IPs inside a subnet, so the subnet - not the IP - is
@@ -795,13 +803,13 @@ $isHome=($requestPath==='/'||$requestPath==='');
 // falls back to the current host + a fresh cookie.
 $linkDomain = $host;
 $linkCookieOpts = ['expires' => $nowTs + 2592000, 'path' => '/'];
-if (str_contains($baseDomain, '.')) $linkCookieOpts['domain'] = '.' . $baseDomain;
+if (!$isExternalHoneytrapDomain && str_contains($baseDomain, '.')) $linkCookieOpts['domain'] = '.' . $baseDomain;
 $rawLinkCookie = (string)($_COOKIE['_lnk'] ?? $_COOKIE['maze_link'] ?? '');
 $cookieLinkDomain = ''; $cookieLinkTs = 0;
 if ($rawLinkCookie !== '' && str_contains($rawLinkCookie, '__')) {
     [$cld, $clt] = explode('__', $rawLinkCookie, 2);
     $cld = strtolower(trim($cld));
-    $cldValid = ($cld === $baseDomain || str_ends_with($cld, '.' . $baseDomain))
+    $cldValid = ($cld === $baseDomain || str_ends_with($cld, '.' . $baseDomain) || in_array($cld, $externalHoneytrapDomains, true))
         && preg_match('/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/', $cld);
     if ($cldValid && preg_match('/^\d{1,12}$/', trim($clt))) {
         $tsCand = (int)trim($clt);
