@@ -6,14 +6,14 @@ on:
       - main # Triggers immediately on any new push to main
   workflow_dispatch: # Manual run button in the Actions tab
   schedule:
-    - cron: '*/15 * * * *' # Runs automatically every 15 minutes
+    - cron: "*/15 * * * *" # Runs automatically every 15 minutes
 
 concurrency:
   group: sync-server-files
   cancel-in-progress: false
 
 env:
-  OUT_FILE: REPORT.md
+  OUT_FILE: README.md
 
 jobs:
   fetch-files:
