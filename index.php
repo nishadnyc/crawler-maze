@@ -821,6 +821,26 @@ if ($cookieLinkDomain === '') {
     // link domain, stored in a fresh cookie with the current time.
     $linkDomain = $host;
     setcookie('_lnk', $linkDomain . '__' . $nowTs, $linkCookieOpts);
+    if ($isExternalHoneytrapDomain) {
+        // STALE-COOKIE TRAP FIX (2026-11-23): older deployed versions
+        // set the _lnk cookie with Domain=.<provider parent> (e.g.
+        // .chickenkiller.com, .mooo.com) and stored random subdomains
+        // of that parent in it. Those stale cookies (30-day expiry)
+        // fail validation under the current rules, so without this
+        // every request falls into this no-session fallback forever:
+        // the stale parent-domain cookie keeps arriving and shadowing
+        // the fresh host-only cookie, and the visitor stays stuck
+        // seeing 100% of links on the visited domain and never gets
+        // a session. Kill the parent-domain variants of both cookie
+        // names with an expired Set-Cookie so the fresh host-only
+        // cookie takes over on the next request.
+        $hostParts = explode('.', strtolower($host));
+        if (count($hostParts) > 2) {
+            $killOpts = ['expires' => $nowTs - 3600, 'path' => '/', 'domain' => '.' . implode('.', array_slice($hostParts, -2))];
+            setcookie('_lnk', '', $killOpts);
+            setcookie('maze_link', '', $killOpts);
+        }
+    }
 } elseif ($nowTs - $cookieLinkTs >= 5) {
     // This visitor's 5 seconds are up: generate ONE new random
     // subdomain (same word style buildUrl() uses for siblings),
