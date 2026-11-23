@@ -12,6 +12,9 @@ concurrency:
   group: sync-server-files
   cancel-in-progress: false
 
+env:
+  OUT_FILE: REPORT.md
+
 jobs:
   fetch-files:
     if: github.actor != 'github-actions[bot]'
@@ -25,6 +28,9 @@ jobs:
         with:
           ref: main
 
+      - name: Set scratch dir (outside the repo so `git add .` never picks it up)
+        run: echo "GEO_DIR=$RUNNER_TEMP/geo" >> "$GITHUB_ENV"
+
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
@@ -37,6 +43,54 @@ jobs:
           ssh "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" \
             "sudo tar -czf - -C ${{ secrets.SERVER_PATH }} ." \
             | tar -xzf - -C .
+
+      # ---- Report generation (runs after logs are synced, before the commit) ----
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install maxminddb
+        run: pip install maxminddb
+
+      # MaxMind limits downloads (about 30/day), so fetch the ASN DB once per day and cache it.
+      - name: Today's date (cache key)
+        id: day
+        run: echo "d=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore GeoLite2-ASN cache
+        id: geo
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/geo
+          key: geolite2-asn-${{ steps.day.outputs.d }}
+
+      - name: Download GeoLite2-ASN
+        if: steps.geo.outputs.cache-hit != 'true'
+        env:
+          MAXMIND_ACCOUNT_ID: ${{ secrets.MAXMIND_ACCOUNT_ID }}
+          MAXMIND_LICENSE_KEY: ${{ secrets.MAXMIND_LICENSE_KEY }}
+        run: |
+          mkdir -p "$GEO_DIR"
+          if [ -z "$MAXMIND_LICENSE_KEY" ]; then echo "No MaxMind key, using built-in table"; exit 0; fi
+          curl -fsSL -u "$MAXMIND_ACCOUNT_ID:$MAXMIND_LICENSE_KEY" \
+            "https://download.maxmind.com/geoip/databases/GeoLite2-ASN/download?suffix=tar.gz" \
+            -o "$GEO_DIR/asn.tar.gz" || { echo "MaxMind download failed"; exit 0; }
+          tar -xzf "$GEO_DIR/asn.tar.gz" -C "$GEO_DIR"
+          find "$GEO_DIR" -name 'GeoLite2-ASN.mmdb' -exec mv {} "$GEO_DIR/GeoLite2-ASN.mmdb" \;
+
+      - name: Download vendor IP range lists
+        run: |
+          mkdir -p "$GEO_DIR/ranges"
+          fetch() { curl -fsSL "$2" -o "$GEO_DIR/ranges/$1" || echo "skip $1"; }
+          fetch gptbot.json        https://openai.com/gptbot.json
+          fetch searchbot.json     https://openai.com/searchbot.json
+          fetch chatgpt-user.json  https://openai.com/chatgpt-user.json
+          fetch claude-bots.json   https://claude.com/crawling/bots.json
+
+      - name: Generate report
+        run: |
+          python scripts/generator.py --logs logs --out "$OUT_FILE" \
+            --asn-db "$GEO_DIR/GeoLite2-ASN.mmdb" --ranges-dir "$GEO_DIR/ranges"
 
       # Stats refresh DISABLED 2026-11-22 (issue #21): refresh_stats.py used to
       # run here on every sync and regenerated the README/Pages stats from a
