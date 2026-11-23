@@ -12,16 +12,16 @@
 
 | Crawler | Requests | IPs | What it was after |
 | --- | ---: | --- | --- |
-| ClaudeBot | 32,189 | 1 — all from `216.73.216.60` | Tutorials, Developer pages, robots.txt |
-| GPTBot | 1,514 | 296 — from 3 blocks: `74.7.0.0/16`, `132.196.0.0/16`, `172.182.0.0/16` | Newsroom, Marketplace, Platform |
-| OAI-SearchBot | 18,912 | 257 — from 2 blocks: `51.8.0.0/16`, `74.7.0.0/16` | robots.txt |
-| facebookexternalhit | 202 | 76 — from 2 blocks: `69.171.0.0/16`, `173.252.0.0/16` | robots.txt |
-| Fake old-Chrome scanner fleet | 4,114 | 61 — from 7 blocks: `45.249.0.0/16`, `103.218.0.0/16`, `106.75.0.0/16`, `123.58.0.0/16`, `152.32.0.0/16`, `154.51.0.0/16`, `156.225.0.0/16` | favicon.ico |
-| Credential hunters | 3,342 | 137 — spread across 24 blocks | Probing for /.env, firebase keys and similar files that don't exist here |
-| API hammerer (fake Chrome 147) | 794 | 22 — mostly from `216.167.0.0/16` (NTT America, Los Angeles, US; operator unknown) | API docs — 792 of its 794 hits went straight to /api, in two short bursts |
-| XML Sitemaps Generator | 505 | 2 — 503 of its 505 hits from `85.92.66.148` (xml-sitemaps.com's own server, London, UK) | Careers, Marketplace, Help centre |
-| meta-webindexer | 60 | 35 — all from `57.141.0.0/16` (Meta, Ashburn, Virginia, US) | Pricing, Resources, Status |
-| Claude-User | 9 | 4 — all from `160.79.106.0/24` (Anthropic, Columbus, Ohio, US) | robots.txt |
+| ClaudeBot | 32,189 | `216.73.216.60` | Tutorials, Developer pages, robots.txt |
+| GPTBot | 1,514 | `74.7.0.0/16`, `132.196.0.0/16`, `172.182.0.0/16` | Newsroom, Marketplace, Platform |
+| OAI-SearchBot | 18,912 | `51.8.0.0/16`, `74.7.0.0/16` | robots.txt |
+| facebookexternalhit | 202 | `69.171.0.0/16`, `173.252.0.0/16` | robots.txt |
+| Fake old-Chrome scanner fleet | 4,114 | `45.249.0.0/16`, `103.218.0.0/16`, `106.75.0.0/16`, `123.58.0.0/16`, `152.32.0.0/16`, `154.51.0.0/16`, `156.225.0.0/16` | favicon.ico |
+| Credential hunters | 3,342 | `20.28.0.0/16`, `20.219.0.0/16`, `34.21.0.0/16`, `34.47.0.0/16`, `34.92.0.0/16`, `34.96.0.0/16`, `34.154.0.0/16`, `35.189.0.0/16`, `45.138.0.0/16`, `45.148.0.0/16`, `45.156.0.0/16`, `81.171.0.0/16`, `85.11.0.0/16`, `87.81.0.0/16`, `91.148.0.0/16`, `94.26.0.0/16`, `96.126.0.0/16`, `103.150.0.0/16`, `104.29.0.0/16`, `129.213.0.0/16`, `153.75.0.0/16`, `165.232.0.0/16`, `195.178.0.0/16`, `203.25.0.0/16` | Probing for /.env, firebase keys and similar files that don't exist here |
+| API hammerer (fake Chrome 147) | 794 | `8.218.0.0/16`, `23.148.0.0/16`, `70.39.0.0/16`, `85.203.0.0/16`, `137.220.0.0/16`, `154.44.0.0/16`, `165.154.0.0/16`, `216.36.0.0/16`, `216.167.0.0/16` | API docs — 792 of its 794 hits went straight to /api, in two short bursts |
+| XML Sitemaps Generator | 505 | `85.92.0.0/16` | Careers, Marketplace, Help centre |
+| meta-webindexer | 60 | `57.141.0.0/16` | Pricing, Resources, Status |
+| Claude-User | 9 | `160.79.0.0/16` | robots.txt |
 
 **What they were looking for:** robots.txt **23,175** · Tutorials **4,890** · Developer pages **4,577** · API docs **3,590** · sitemap.xml **3,224** · Docs **3,066**
 
