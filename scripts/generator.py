@@ -185,6 +185,7 @@ def load(logs_dir):
     subnets = collections.defaultdict(lambda: dict(total=0, ips=set(), banned=0))
     all_ips, hosts = set(), set()
     botips = collections.defaultdict(set)
+    extra = dict(seen=collections.defaultdict(dict), botday=collections.defaultdict(lambda: collections.defaultdict(set)), bans=[])
     daily = collections.defaultdict(lambda: dict(total=0, banned=0, by=collections.Counter(), ips=set()))
     ban_entries = 0
     for f in files:
@@ -194,7 +195,10 @@ def load(logs_dir):
             continue
         sn = d.get("subnet", "unknown")
         m = re.search(r"(\d{4}-\d{2}-\d{2})\.json$", f)
-        day = daily[m.group(1) if m else "unknown"]
+        day_key = m.group(1) if m else "unknown"
+        day = daily[day_key]
+        for bk, bv in d.get("bans", {}).items():
+            extra["bans"].append((bk.split(":")[0], bv.get("since", 0), bv.get("until", 0), bv.get("user_agent", "")))
         day["ips"].update(d.get("ips", {}))
         ban_entries += len(d.get("bans", {}))
         for ip, v in d.get("ips", {}).items():
@@ -203,6 +207,9 @@ def load(logs_dir):
             a = v.get("agent", "")
             if a.startswith("bot:"):
                 botips[a].add(ip)
+                lo, hi = extra["seen"][a].get(ip, (10**12, 0))
+                extra["seen"][a][ip] = (min(lo, v.get("first_seen", lo)), max(hi, v.get("last_seen", hi)))
+                extra["botday"][a][day_key].add(ip)
         for key, g in d.get("groups", {}).items():
             x = groups[key]
             for k, src in (("total", "total"), ("clicked", "clicked"), ("direct", "direct"),
@@ -225,7 +232,7 @@ def load(logs_dir):
             subnets[sn]["banned"] += g.get("banned_hits", 0)
     for a, ips in botips.items():
         groups[a]["ips"] |= ips
-    return groups, subnets, all_ips, hosts, ban_entries, len(files), daily
+    return groups, subnets, all_ips, hosts, ban_entries, len(files), daily, extra
 
 
 # -------------------------------------------------------------------- render
@@ -260,6 +267,29 @@ def ua_label(ua):
     return ua[:50]
 
 
+def bot_of_ua(ua):
+    for n in ("ClaudeBot", "OAI-SearchBot", "GPTBot", "Claude-User", "ChatGPT-User"):
+        if n in ua:
+            return n
+    m = re.search(r"([A-Za-z][\w.-]*[Bb]ot)", ua)
+    return m.group(1) if m else "non-bot"
+
+
+def median(xs):
+    xs = sorted(xs)
+    n = len(xs)
+    return 0 if not n else (xs[n // 2] if n % 2 else (xs[n // 2 - 1] + xs[n // 2]) / 2)
+
+
+def entropy_ratio(counts):
+    vals = [v for v in counts if v > 0]
+    if len(vals) < 2:
+        return 0.0
+    t = sum(vals)
+    h = -sum(v / t * __import__("math").log2(v / t) for v in vals)
+    return h / __import__("math").log2(len(vals))
+
+
 def esc(s):
     return s.replace("|", "\\|")
 
@@ -275,7 +305,7 @@ def main():
     ap.add_argument("--ranges-dir", default="", help="folder with vendor range JSON files (optional)")
     args = ap.parse_args()
 
-    groups, subnets, all_ips, hosts, ban_entries, nfiles, daily = load(args.logs)
+    groups, subnets, all_ips, hosts, ban_entries, nfiles, daily, extra = load(args.logs)
     if not groups:
         raise SystemExit(f"No usable logs found in {args.logs}/")
 
@@ -349,6 +379,92 @@ def main():
             w.writerow(["day", "hits"] + cols + ["distinct_ips", "hits_during_bans"])
             for k, dd, vals in map(day_row, sorted(days)):
                 w.writerow([k, dd["total"]] + vals + [len(dd["ips"]), dd["banned"]])
+
+    # --- requests received (served + logged during bans)
+    L.append("\n## Requests received (served plus logged during bans)\n")
+    L.append("`Served` is the maze's normal hit counter. `During bans` counts requests that arrived while the "
+             "source was banned and were tarpitted. Together they show how hard each source really pushes.\n")
+    recv = [(k[4:] if k.startswith("bot:") else "non-bot", g["total"], g["banned"]) for k, g in bots.items()]
+    recv.append(("non-bot", sum(g["total"] for g in others.values()), sum(g["banned"] for g in others.values())))
+    recv.sort(key=lambda r: -(r[1] + r[2]))
+    rtot = sum(a + b for _, a, b in recv) or 1
+    mx = (recv[0][1] + recv[0][2]) if recv else 1
+    L.append(table(["Source", "Served", "During bans", "Received", "Share", "% of requests banned", ""],
+                   [[n, f"{a:,}", f"{b:,}", f"{a + b:,}", pct(a + b, rtot), pct(b, a + b), f"`{bar(a + b, mx)}`"]
+                    for n, a, b in recv], ["l", "r", "r", "r", "r", "r", "l"]))
+
+    # --- crawler behaviour
+    named_bots = [(k[4:], g) for k, g in sorted(bots.items(), key=lambda kv: -kv[1]["total"]) if g["total"] >= 20]
+    if named_bots:
+        L.append("\n## Crawler behaviour\n")
+        rows = []
+        for n, g in named_bots:
+            k = "bot:" + n
+            hrs = (g["last"] - g["first"]) / 3600
+            seen = extra["seen"].get(k, {})
+            life = [(b - a) / 3600 for a, b in seen.values()]
+            single = sum(1 for a, b in seen.values() if b - a < 60)
+            rate = f"{g['total'] / hrs / 60:.1f}" if hrs >= 0.1 else "-"
+            rate_all = f"{(g['total'] + g['banned']) / hrs / 60:.1f}" if hrs >= 0.1 else "-"
+            rows.append([n, rate, rate_all, f"{len(seen):,}", f"{single:,}",
+                         f"{median(life):.1f}" if life else "-", f"{max(life):.1f}" if life else "-"])
+        L.append("**Pace and IP use.** Single-use IPs were seen for under a minute. Requests per minute are averaged over each bot's own active window.\n")
+        L.append(table(["Bot", "Served req/min", "Incl. banned req/min", "IPs", "Single-use IPs", "Median IP lifetime (h)", "Longest (h)"],
+                       rows, ["l", "r", "r", "r", "r", "r", "r"]))
+
+        # IP churn per day
+        ds = sorted({d for n, _ in named_bots for d in extra["botday"].get("bot:" + n, {})})[-7:]
+        if len(ds) >= 1:
+            seen_before = {n: set() for n, _ in named_bots}
+            for n, _ in named_bots:
+                for d in sorted(extra["botday"].get("bot:" + n, {})):
+                    if d < ds[0]:
+                        seen_before[n] |= extra["botday"]["bot:" + n][d]
+            rows = []
+            for d in ds:
+                row = [d]
+                for n, _ in named_bots:
+                    cur = extra["botday"].get("bot:" + n, {}).get(d, set())
+                    new = cur - seen_before[n]
+                    seen_before[n] |= cur
+                    row.append(f"{len(cur)} (+{len(new)})" if cur else "-")
+                rows.append(row)
+            L.append("\n**IP churn per day.** Active IPs, with brand-new IPs in brackets. A bot that keeps finding new IPs has a pool larger than what has been seen.\n")
+            L.append(table(["Day"] + [n for n, _ in named_bots], rows, ["l"] + ["r"] * len(named_bots)))
+
+        # bans
+        bb = collections.defaultdict(list)
+        for kind, since, until, ua in extra["bans"]:
+            bb[bot_of_ua(ua)].append((since, kind, until))
+        rows = []
+        for n, lst in sorted(bb.items(), key=lambda kv: -len(kv[1])):
+            lst.sort()
+            kinds = collections.Counter(k for _, k, _ in lst)
+            gaps = [b[0] - a[0] for a, b in zip(lst, lst[1:]) if b[0] > a[0]]
+            hours = collections.Counter(dt.datetime.fromtimestamp(s_, dt.timezone.utc).hour for s_, _, _ in lst)
+            lens = collections.Counter(round((u - s_) / 60) for s_, _, u in lst)
+            rows.append([n, f"{len(lst):,}", ", ".join(f"{k} {c}" for k, c in kinds.most_common()),
+                         f"{median(gaps):.0f}" if gaps else "-", f"{hours.most_common(1)[0][0]:02d}:00",
+                         ", ".join(f"{m} min" for m, _ in lens.most_common(2))])
+        if rows:
+            L.append("\n**Bans.** A median gap equal to the ban length means the source is re-banned the moment each ban expires.\n")
+            L.append(table(["Bot", "Bans", "By kind", "Median gap between bans (s)", "Busiest hour (UTC)", "Ban length"],
+                           rows, ["l", "r", "l", "r", "r", "l"]))
+
+        # section focus
+        rows = []
+        for n, g in named_bots:
+            sec = {s_: c for s_, c in g["sections"].items() if s_ not in SITE_SECTIONS}
+            tot_c = sum(sec.values())
+            if tot_c < 100:
+                continue
+            top4 = sec and sum(c for _, c in collections.Counter(sec).most_common(4))
+            rows.append([n, f"{tot_c:,}", len(sec), pct(top4, tot_c), f"{entropy_ratio(sec.values()):.2f}",
+                         ", ".join(f"{s_} {c:,}" for s_, c in collections.Counter(sec).most_common(4))])
+        if rows:
+            L.append("\n**Section focus.** Evenness runs from 0 (one section only) to 1 (perfectly even). robots.txt, sitemap.xml and favicon.ico are excluded.\n")
+            L.append(table(["Bot", "Content requests", "Sections", "Top-4 share", "Evenness", "Top sections"],
+                           rows, ["l", "r", "r", "r", "r", "l"]))
 
     # --- named crawlers
     L.append("\n## Named crawlers\n")
