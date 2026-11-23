@@ -8,20 +8,20 @@
 
 *What the logs say · Sunday, November 22, 2026 · counted from the maze's own logs.*
 
-**63,529** crawler hits served · **1,464** unique IPs · **318** subnet log files · **66,527** banned hits
+**63,529** crawler hits served · **1,464** unique IPs · **318** subnet log files
 
-| Crawler | Requests | Banned hits | IPs | What it was after |
-| --- | ---: | ---: | --- | --- |
-| ClaudeBot | 32,189 | 668 | 1 — all from `216.73.216.60` | Tutorials, Developer pages, robots.txt |
-| GPTBot | 1,514 | 64,582 | 296 | Newsroom, Marketplace, Platform |
-| OAI-SearchBot | 18,912 | 1,277 | 257 | robots.txt |
-| facebookexternalhit | 202 | 0 | 76 | robots.txt |
-| Fake old-Chrome scanner fleet | 4,114 | 0 | 61 | favicon.ico |
-| Credential hunters | 3,342 | 0 | 137 | Probing for /.env, firebase keys and similar files that don't exist here |
-| API hammerer (fake Chrome 147) | 794 | 0 | 22 — mostly from `216.167.0.0/16` (NTT America, Los Angeles, US; operator unknown) | API docs — 792 of its 794 hits went straight to /api, in two short bursts |
-| XML Sitemaps Generator | 505 | 0 | 2 — 503 of its 505 hits from `85.92.66.148` (xml-sitemaps.com's own server, London, UK) | Careers, Marketplace, Help centre |
-| meta-webindexer | 60 | 0 | 35 — all from `57.141.0.0/16` (Meta, Ashburn, Virginia, US) | Pricing, Resources, Status |
-| Claude-User | 9 | 0 | 4 — all from `160.79.106.0/24` (Anthropic, Columbus, Ohio, US) | robots.txt |
+| Crawler | Requests | IPs | What it was after |
+| --- | ---: | --- | --- |
+| ClaudeBot | 32,189 | 1 — all from `216.73.216.60` | Tutorials, Developer pages, robots.txt |
+| GPTBot | 1,514 | 296 — from 3 blocks: `74.7.0.0/16`, `132.196.0.0/16`, `172.182.0.0/16` | Newsroom, Marketplace, Platform |
+| OAI-SearchBot | 18,912 | 257 — from 2 blocks: `51.8.0.0/16`, `74.7.0.0/16` | robots.txt |
+| facebookexternalhit | 202 | 76 — from 2 blocks: `69.171.0.0/16`, `173.252.0.0/16` | robots.txt |
+| Fake old-Chrome scanner fleet | 4,114 | 61 — from 7 blocks: `45.249.0.0/16`, `103.218.0.0/16`, `106.75.0.0/16`, `123.58.0.0/16`, `152.32.0.0/16`, `154.51.0.0/16`, `156.225.0.0/16` | favicon.ico |
+| Credential hunters | 3,342 | 137 — spread across 24 blocks | Probing for /.env, firebase keys and similar files that don't exist here |
+| API hammerer (fake Chrome 147) | 794 | 22 — mostly from `216.167.0.0/16` (NTT America, Los Angeles, US; operator unknown) | API docs — 792 of its 794 hits went straight to /api, in two short bursts |
+| XML Sitemaps Generator | 505 | 2 — 503 of its 505 hits from `85.92.66.148` (xml-sitemaps.com's own server, London, UK) | Careers, Marketplace, Help centre |
+| meta-webindexer | 60 | 35 — all from `57.141.0.0/16` (Meta, Ashburn, Virginia, US) | Pricing, Resources, Status |
+| Claude-User | 9 | 4 — all from `160.79.106.0/24` (Anthropic, Columbus, Ohio, US) | robots.txt |
 
 **What they were looking for:** robots.txt **23,175** · Tutorials **4,890** · Developer pages **4,577** · API docs **3,590** · sitemap.xml **3,224** · Docs **3,066**
 
