@@ -379,6 +379,24 @@ $requestPath=parse_url($_SERVER['REQUEST_URI']??'/', PHP_URL_PATH)?:'/';
 $parts=explode('.',$host);
 if(count($parts)>2){ $currentSub=$parts[0]; $baseDomain=implode('.',array_slice($parts,-2)); } else { $currentSub=''; $baseDomain=$host; }
 $currentName=$currentSub!==''?ucwords(str_replace(['-','_'],' ',$currentSub)):pick($brands);
+// ---------------------------------------------------------------------------
+// EXTERNAL HONEYTRAP DOMAINS (Nishad 2026-11-23): five fixed domains
+// that are NOT ours - someone else pointed their A records at the
+// maze (via Nginx), so we can use them but cannot change their DNS.
+// Their ONLY use in the maze: in the Explore block, five of the
+// generated links have their host swapped for one of these five
+// (same generated URL, only the domain changes - see EXPLORE FIVE
+// below). Everything else - all random domain generation included -
+// stays exactly as it was. One per line, lowercase, full host only -
+// no scheme, no port, no trailing dot; delete a line to remove it.
+// ---------------------------------------------------------------------------
+$externalHoneytrapDomains=[
+    'kamka.mooo.com',
+    'digital-murgi.chickenkiller.com',
+    'shameless-robot.crabdance.com',
+    'recorded.twilightparadox.com',
+    'cleo.chickenkiller.com',
+];
 // Visitor identity: real IP (first X-Forwarded-For entry, set by the proxy),
 // user-agent string, and the visitor's /16 subnet (IPv6: /48). Crawlers
 // rotate individual IPs inside a subnet, so the subnet - not the IP - is
@@ -1100,6 +1118,11 @@ $signupDone=$isTrialPage && (($_SERVER['REQUEST_METHOD'] ?? '')==='POST') && iss
 $exploreCount=['home'=>80,'article'=>48,'guide'=>40,'docs'=>32,'pricing'=>24,'company'=>24,'status'=>16][$layout] ?? 40;
 // Explore same-topic cap: at most 2 links per slug topic in the block (the homepage's 80 links across only 30 topics force a floor of 3 there - ceil(80/30) - or the block could not reach its usual count).
 $links=uniqueLinks($exploreCount,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain,max(2,(int)ceil($exploreCount/max(1,count($slugTopics)))));
+// EXPLORE FIVE (Nishad 2026-11-23): take five of the Explore links
+// just generated and swap their hosts for the five fixed external
+// honeytrap domains - same generated URLs, only the domain changes,
+// one link per fixed domain. Nothing else in the maze changes.
+if(!empty($externalHoneytrapDomains)){ $extIdx=0; foreach($externalHoneytrapDomains as $extHost){ if(!isset($links[$extIdx])) break; $links[$extIdx]['url']=preg_replace('#^([a-z]+://)[^/]+#i', '$1'.$extHost, $links[$extIdx]['url']); $extIdx++; } }
 // Explore labels come straight from buildUrl() now (see REALISTIC LINK
 // LABELS there): each label names its own destination's slug topic.
 // The old random-prefix patch loop that masked the host-derived
