@@ -1,74 +1,162 @@
-[![Docker build & smoke test](https://github.com/nishadnyc/crawler-maze/actions/workflows/docker.yml/badge.svg)](https://github.com/nishadnyc/crawler-maze/actions/workflows/docker.yml)
-[![GitHub Pages](https://img.shields.io/badge/GitHub%20Pages-live-brightgreen)](https://nishadnyc.github.io/crawler-maze/)
-[![Docker](https://img.shields.io/badge/Docker-supported-2496ED?logo=docker&logoColor=white)](https://github.com/nishadnyc/crawler-maze/blob/main/DOCKER.md)
-[![Open Source](https://img.shields.io/badge/Open%20Source-MIT-green?logo=opensourceinitiative&logoColor=white)](https://github.com/nishadnyc/crawler-maze/blob/main/LICENSE)
+# Crawler trap traffic report
 
-<!-- STATS:START -->
-## One day in the maze
+_Built from 364 log files. Window: 2026-11-22 03:45 to 2026-11-23 01:25 UTC (21.7 h)._
 
-*What the logs say · Sunday, November 22, 2026 · counted from the maze's own logs.*
+| Metric | Value |
+| --- | ---: |
+| Logged hits | 74,108 |
+| Bot-labelled hits | 60,886 (82.2%) |
+| Distinct IPs | 1,161 |
+| /16 ranges | 339 |
+| Hostnames seen | 156 |
+| Ban entries | 290 |
+| Requests logged during bans | 90,170 |
+| Form submissions (honeypot) | 2 |
 
-**63,529** crawler hits served · **1,464** unique IPs · **318** subnet log files
+## Traffic mix
 
-| Crawler | Requests | IPs | What it was after |
-| --- | ---: | --- | --- |
-| ClaudeBot | 32,189 | `216.73.216.60` | Tutorials, Developer pages, robots.txt |
-| GPTBot | 1,514 | `74.7.0.0/16`, `132.196.0.0/16`, `172.182.0.0/16` | Newsroom, Marketplace, Platform |
-| OAI-SearchBot | 18,912 | `51.8.0.0/16`, `74.7.0.0/16` | robots.txt |
-| facebookexternalhit | 202 | `69.171.0.0/16`, `173.252.0.0/16` | robots.txt |
-| Fake old-Chrome scanner fleet | 4,114 | `45.249.0.0/16`, `103.218.0.0/16`, `106.75.0.0/16`, `123.58.0.0/16`, `152.32.0.0/16`, `154.51.0.0/16`, `156.225.0.0/16` | favicon.ico |
-| Credential hunters | 3,342 | `20.28.0.0/16`, `20.219.0.0/16`, `34.21.0.0/16`, `34.47.0.0/16`, `34.92.0.0/16`, `34.96.0.0/16`, `34.154.0.0/16`, `35.189.0.0/16`, `45.138.0.0/16`, `45.148.0.0/16`, `45.156.0.0/16`, `81.171.0.0/16`, `85.11.0.0/16`, `87.81.0.0/16`, `91.148.0.0/16`, `94.26.0.0/16`, `96.126.0.0/16`, `103.150.0.0/16`, `104.29.0.0/16`, `129.213.0.0/16`, `153.75.0.0/16`, `165.232.0.0/16`, `195.178.0.0/16`, `203.25.0.0/16` | Probing for /.env, firebase keys and similar files that don't exist here |
-| API hammerer (fake Chrome 147) | 794 | `8.218.0.0/16`, `23.148.0.0/16`, `70.39.0.0/16`, `85.203.0.0/16`, `137.220.0.0/16`, `154.44.0.0/16`, `165.154.0.0/16`, `216.36.0.0/16`, `216.167.0.0/16` | API docs — 792 of its 794 hits went straight to /api, in two short bursts |
-| XML Sitemaps Generator | 505 | `85.92.0.0/16` | Careers, Marketplace, Help centre |
-| meta-webindexer | 60 | `57.141.0.0/16` | Pricing, Resources, Status |
-| Claude-User | 9 | `160.79.0.0/16` | robots.txt |
+| Source | Hits | Share |  |
+| --- | ---: | ---: | --- |
+| ClaudeBot | 35,932 | 48.5% | `████████████████████` |
+| OAI-SearchBot | 23,074 | 31.1% | `█████████████` |
+| non-bot user agents | 13,222 | 17.8% | `███████` |
+| GPTBot | 1,870 | 2.5% | `█` |
+| Claude-User | 9 | 0.0% | `█` |
+| ChatGPT-User | 1 | 0.0% | `█` |
 
-**What they were looking for:** robots.txt **23,175** · Tutorials **4,890** · Developer pages **4,577** · API docs **3,590** · sitemap.xml **3,224** · Docs **3,066**
+## Named crawlers
 
-**Patterns:** GPTBot mostly bounced off bans — 63,296 banned hits against 1,513 served. OAI-SearchBot did the opposite of digging: every one of its 18,912 hits was a robots.txt check, swept through a single subnet range from 257 different IPs. And ClaudeBot's 31,943 hits came from exactly one IP, all day.
+### ClaudeBot
 
-Honeypot login form: **0 submissions** — nobody took that bait.
+- **Owner:** Anthropic
+- **Hits:** 35,932 (48.5%) from 1 IP(s) in 1 /16 range(s)
+- **/24 ranges (IPs):** `216.73.216.0/24` (1)
+- **Vendor range check:** all 1 IPs are inside the vendor's published ranges
+- **Link-follow vs direct:** 0.0% followed maze links, 100.0% direct fetches
+- **robots.txt requests:** 4,698 (13.1%); sitemap.xml: 3,569
+- **Requests per IP:** 35,932.0 average
+- **Bans:** 11; 2,161 further requests logged while banned
+- **Top sections:** tutorials 5,475, developers 4,925, robots.txt 4,698, sitemap.xml 3,569, docs 3,349, api 2,750
+- **User agent:** `Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; ClaudeBot/1.0; +claudebot@anthropic.com)`
 
-*Every one of those hits was a page that doesn't exist, for a company that doesn't exist. They kept reading anyway.*
-<!-- STATS:END -->
+### OAI-SearchBot
 
-# Crawler Maze — a maze for AI crawlers
+- **Owner:** OpenAI (Microsoft Azure)
+- **Hits:** 23,074 (31.1%) from 257 IP(s) in 2 /16 range(s)
+- **/24 ranges (IPs):** `74.7.230.0/24` (52), `74.7.244.0/24` (52), `74.7.228.0/24` (51), `74.7.241.0/24` (51), `74.7.175.0/24` (50), `51.8.102.0/24` (1)
+- **Vendor range check:** all 257 IPs are inside the vendor's published ranges
+- **Link-follow vs direct:** 0.0% followed maze links, 100.0% direct fetches
+- **robots.txt requests:** 23,074 (100.0%); sitemap.xml: 0
+- **Requests per IP:** 89.8 average
+- **Bans:** 358; 1,668 further requests logged while banned
+- **Top sections:** robots.txt 23,074
+- **User agent:** `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36; c`
 
-## The idea
+### GPTBot
 
-The web is crawled constantly by AI bots — ClaudeBot, GPTBot and friends —
-that fetch pages, store what they find, and follow links at enormous scale.
-Most sites respond one of two ways: let the bots in, or try to keep them
-out. This project does neither. **It feeds them.**
+- **Owner:** OpenAI (Microsoft Azure)
+- **Hits:** 1,870 (2.5%) from 171 IP(s) in 3 /16 range(s)
+- **/24 ranges (IPs):** `74.7.227.0/24` (67), `74.7.242.0/24` (30), `74.7.241.0/24` (26), `74.7.243.0/24` (26), `132.196.86.0/24` (11), `172.182.202.0/24` (6), `172.182.207.0/24` (5)
+- **Vendor range check:** all 171 IPs are inside the vendor's published ranges
+- **Link-follow vs direct:** 99.3% followed maze links, 0.7% direct fetches
+- **robots.txt requests:** 0 (0.0%); sitemap.xml: 12
+- **Requests per IP:** 10.9 average
+- **Bans:** 81; 86,112 further requests logged while banned
+- **Top sections:** marketplace 63, newsroom 63, services 62, platform 60, features 60, comparison 59
+- **User agent:** `Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; GPTBot/1.4; +https://openai.com/gptbot)`
 
-Any subdomain of a wildcard domain that has no real site answers with a
-complete, plausible-looking hosting company: readable articles, plans and
-pricing, documentation, FAQs, testimonials — the works. Every page links
-onward to more pages and more subdomains. There is no last page. A crawler
-that wanders in finds what looks like a gold mine and just keeps digging.
+### Claude-User
 
-Each subdomain is one self-consistent fake company. Its identity is seeded
-from the subdomain itself, so the same address always shows the same
-company — same brand, same prices, same people. But the network as a whole
-is infinite: every new subdomain is another company, another site to
-crawl, and no crawler ever finishes.
+- **Owner:** Anthropic
+- **Hits:** 9 (0.0%) from 4 IP(s) in 1 /16 range(s)
+- **/24 ranges (IPs):** `160.79.106.0/24` (4)
+- **Vendor range check:** 0/4 IPs inside published ranges; **not listed:** `160.79.106.128`, `160.79.106.137`, `160.79.106.138`, `160.79.106.139`
+- **Link-follow vs direct:** 0.0% followed maze links, 100.0% direct fetches
+- **robots.txt requests:** 4 (44.4%); sitemap.xml: 0
+- **Requests per IP:** 2.2 average
+- **Top sections:** robots.txt 4
+- **User agent:** `Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Claude-User/1.0; +claude-user@anthropic.com)`
 
-The point is an experiment, built for fun: watch how crawlers behave when
-the web fights back with fiction instead of walls — how deep they dig, how
-long they stay, and what they swallow without ever stepping back to notice
-the pattern. The heaviest crawlers are logged per subnet and eventually
-rate-limited, and a hidden login form catches the bots that try to
-sign up.
+### ChatGPT-User
 
-It's not a product. Nothing is sold, there are no real customers — just a
-maze, and the bots are the visitors it was built for.
+- **Owner:** OpenAI (Microsoft Azure)
+- **Hits:** 1 (0.0%) from 1 IP(s) in 1 /16 range(s)
+- **/24 ranges (IPs):** `20.125.144.0/24` (1)
+- **Vendor range check:** all 1 IPs are inside the vendor's published ranges
+- **Link-follow vs direct:** 0.0% followed maze links, 100.0% direct fetches
+- **robots.txt requests:** 0 (0.0%); sitemap.xml: 0
+- **Requests per IP:** 1.0 average
+- **User agent:** `Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; ChatGPT-User/1.0; +https://openai.com/bot`
 
-## What's in the repo
+## Hits by network owner
 
-- `public_html/index.php` — the whole maze: one self-contained PHP file
-  that generates every page, with a small `.htaccess` beside it that
-  routes every path to it.
-- Logs are written at runtime into a `logs/` folder beside the script —
-  one file per subnet per day, recording who visited and what they did.
-- This README lives next to `public_html/`, never inside it, so the maze
-  itself is never web-served.
+| Owner | Hits | Share | /16s | IPs | Top ranges |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Anthropic | 35,941 | 48.5% | 2 | 5 | `216.73.0.0/16`, `160.79.0.0/16` |
+| OpenAI (Microsoft Azure) | 24,945 | 33.7% | 5 | 429 | `74.7.0.0/16`, `132.196.0.0/16`, `172.182.0.0/16`, `20.125.0.0/16` |
+| China-region cloud (guess) | 5,609 | 7.6% | 9 | 56 | `152.32.0.0/16`, `156.225.0.0/16`, `154.51.0.0/16`, `106.75.0.0/16` |
+| Google Cloud | 3,197 | 4.3% | 24 | 26 | `34.96.0.0/16`, `34.154.0.0/16`, `34.21.0.0/16`, `35.230.0.0/16` |
+| Unidentified | 2,761 | 3.7% | 124 | 378 | `195.178.0.0/16`, `85.92.0.0/16`, `216.167.0.0/16`, `87.81.0.0/16` |
+| AWS | 453 | 0.6% | 93 | 109 | `18.217.0.0/16`, `44.200.0.0/16`, `3.238.0.0/16`, `35.175.0.0/16` |
+| Meta | 262 | 0.4% | 3 | 36 | `173.252.0.0/16`, `57.141.0.0/16`, `69.171.0.0/16` |
+| Microsoft Azure | 220 | 0.3% | 7 | 9 | `20.219.0.0/16`, `20.214.0.0/16`, `20.28.0.0/16`, `9.234.0.0/16` |
+| ColoCrossing (budget VPS) | 203 | 0.3% | 5 | 6 | `23.94.0.0/16`, `23.95.0.0/16`, `107.172.0.0/16`, `107.174.0.0/16` |
+| GitHub | 201 | 0.3% | 1 | 14 | `140.82.0.0/16` |
+| Tencent Cloud | 134 | 0.2% | 28 | 46 | `43.157.0.0/16`, `43.165.0.0/16`, `43.166.0.0/16`, `43.130.0.0/16` |
+| DigitalOcean | 58 | 0.1% | 14 | 17 | `143.198.0.0/16`, `137.184.0.0/16`, `178.128.0.0/16`, `146.190.0.0/16` |
+| Alibaba Cloud | 42 | 0.1% | 5 | 5 | `8.218.0.0/16`, `47.108.0.0/16`, `47.96.0.0/16`, `47.254.0.0/16` |
+| Akamai/Linode | 32 | 0.0% | 9 | 11 | `96.126.0.0/16`, `172.236.0.0/16`, `172.104.0.0/16`, `45.79.0.0/16` |
+| M247 (VPN/proxy hosting) | 27 | 0.0% | 2 | 4 | `146.70.0.0/16`, `31.209.0.0/16` |
+| Oracle Cloud | 12 | 0.0% | 2 | 2 | `129.213.0.0/16`, `141.148.0.0/16` |
+| Hetzner | 7 | 0.0% | 4 | 4 | `116.202.0.0/16`, `159.69.0.0/16`, `168.119.0.0/16`, `188.245.0.0/16` |
+| Scanner-hosting ISPs | 4 | 0.0% | 2 | 4 | `89.248.0.0/16`, `93.174.0.0/16` |
+
+## Non-bot fingerprints (top 15 by hits)
+
+Same user-agent hash across many ranges usually means one operator or toolkit.
+
+| User agent | Hits | IPs | /16s | Owners | Mode | Requests |
+| --- | ---: | ---: | ---: | --- | --- | --- |
+| `Chrome 49 / Windows NT 6.1` | 5,537 | 61 | 7 | China-region cloud (guess) | direct fetch | favicon.ico |
+| `Chrome 131 / Windows NT 10` | 1,387 | 10 | 10 | AWS, DigitalOcean, Google Cloud, Unidentified | direct fetch | env / secrets, config / framework dirs |
+| `Chrome 147 / Windows NT 10` | 794 | 22 | 9 | Alibaba Cloud, China-region cloud (guess), Unidentified | link-follower | api, favicon.ico |
+| `Chrome 131 / Macintosh` | 755 | 5 | 5 | Google Cloud | direct fetch | env / secrets, config / framework dirs |
+| `Chrome 131 / Linux` | 722 | 3 | 3 | AWS, Google Cloud | direct fetch | env / secrets, config / framework dirs |
+| `Mozilla/5.0 (compatible; XML Sitemaps Generator; w` | 505 | 2 | 1 | Unidentified | link-follower | careers, marketplace, help-centre |
+| `Chrome 157 / Windows NT 10` | 392 | 8 | 4 | ColoCrossing (budget VPS), Unidentified | link-follower | help-centre, webinars, company |
+| `Chrome 114 / Android 12` | 307 | 2 | 2 | Google Cloud, Unidentified | direct fetch | about, changelog, affiliates |
+| `GitHub-Hookshot/3754261` | 215 | 97 | 2 | GitHub, Microsoft Azure | direct fetch | webhooks |
+| `Chrome 120 / Windows NT 10` | 213 | 14 | 14 | AWS, Akamai/Linode, Microsoft Azure | direct fetch | wordpress, php shells / probes |
+| `facebookexternalhit/1.1 (+http://www.facebook.com/` | 202 | 76 | 2 | Meta | direct fetch | robots.txt |
+| `Chrome 133 / Linux` | 195 | 2 | 2 | Unidentified | direct fetch | config / framework dirs, version control / CI |
+| `Chrome 133 / Windows NT 10` | 171 | 3 | 3 | AWS, Unidentified | direct fetch | config / framework dirs, env / secrets |
+| `Chrome 133 / Macintosh` | 161 | 1 | 1 | Unidentified | direct fetch | config / framework dirs, env / secrets |
+| `curl/8.5.0` | 154 | 65 | 2 | Unidentified | direct fetch | backups / db dumps, wordpress |
+
+## What the probes ask for
+
+| Category | Requests |  |
+| --- | ---: | --- |
+| env / secrets | 462 | `████████████████████` |
+| config / framework dirs | 164 | `███████` |
+| wordpress | 137 | `██████` |
+| php shells / probes | 80 | `███` |
+| version control / CI | 58 | `███` |
+| backups / db dumps | 44 | `██` |
+| actuator / swagger | 30 | `█` |
+
+Most requested paths: `wp-includes` (47), `.env` (33), `wp-content` (33), `.git` (32), `actuator` (30), `app` (28), `config` (27), `wp-login.php` (21), `core` (20), `.env.production` (17), `.env.txt` (17), `wp-admin` (17)
+
+## Honeypot form submissions
+
+| Group | Submissions | Ranges |
+| --- | ---: | --- |
+| `ua:b8dd7635412b` | 1 | `87.81.0.0/16` |
+| `ua:7ba3360bfef8` | 1 | `87.81.0.0/16` |
+
+## Notes
+
+- Totals use each group's own hit counter; per-IP counters in the logs are rolling-window values and undercount heavy hitters.
+- Owner names come from a built-in prefix table (`OWNERS_2` in `scripts/generator.py`), not live WHOIS. Pass `--asn-db` for real ASN data.
+- Bot IPs were checked against the vendors' published range files. Bots without a file are unchecked.
+- User agents can be spoofed; vendor tokens are only trustworthy when the IP range matches the vendor.
