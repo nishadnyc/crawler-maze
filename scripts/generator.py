@@ -180,6 +180,7 @@ def load(logs_dir):
     subnets = collections.defaultdict(lambda: dict(total=0, ips=set(), banned=0))
     all_ips, hosts = set(), set()
     botips = collections.defaultdict(set)
+    daily = collections.defaultdict(lambda: dict(total=0, banned=0, by=collections.Counter(), ips=set()))
     ban_entries = 0
     for f in files:
         try:
@@ -187,6 +188,9 @@ def load(logs_dir):
         except (OSError, ValueError):
             continue
         sn = d.get("subnet", "unknown")
+        m = re.search(r"(\d{4}-\d{2}-\d{2})\.json$", f)
+        day = daily[m.group(1) if m else "unknown"]
+        day["ips"].update(d.get("ips", {}))
         ban_entries += len(d.get("bans", {}))
         for ip, v in d.get("ips", {}).items():
             all_ips.add(ip)
@@ -209,11 +213,14 @@ def load(logs_dir):
                 x["sections"].update(g["sections"])
             if g.get("last_host"):
                 hosts.add(g["last_host"])
+            day["total"] += g.get("total", 0)
+            day["banned"] += g.get("banned_hits", 0)
+            day["by"][key[4:] if key.startswith("bot:") else "non-bot"] += g.get("total", 0)
             subnets[sn]["total"] += g.get("total", 0)
             subnets[sn]["banned"] += g.get("banned_hits", 0)
     for a, ips in botips.items():
         groups[a]["ips"] |= ips
-    return groups, subnets, all_ips, hosts, ban_entries, len(files)
+    return groups, subnets, all_ips, hosts, ban_entries, len(files), daily
 
 
 # -------------------------------------------------------------------- render
@@ -257,11 +264,13 @@ def main():
     ap.add_argument("--logs", default="logs")
     ap.add_argument("--out", default="readme.md")
     ap.add_argument("--top-ua", type=int, default=15)
+    ap.add_argument("--days", type=int, default=30, help="days shown in the daily table (0 = all)")
+    ap.add_argument("--daily-csv", default="", help="also write every day to this CSV file")
     ap.add_argument("--asn-db", default="", help="path to GeoLite2-ASN.mmdb (optional)")
     ap.add_argument("--ranges-dir", default="", help="folder with vendor range JSON files (optional)")
     args = ap.parse_args()
 
-    groups, subnets, all_ips, hosts, ban_entries, nfiles = load(args.logs)
+    groups, subnets, all_ips, hosts, ban_entries, nfiles, daily = load(args.logs)
     if not groups:
         raise SystemExit(f"No usable logs found in {args.logs}/")
 
@@ -303,6 +312,38 @@ def main():
     m = rows[0][1]
     L.append(table(["Source", "Hits", "Share", ""],
                    [[n, f"{v:,}", pct(v, total), f"`{bar(v, m)}`"] for n, v in rows], ["l", "r", "r", "l"]))
+
+    # --- daily breakdown
+    days = sorted((d for d in daily if d != "unknown"), reverse=True)
+    if "unknown" in daily:
+        days.append("unknown")
+    overall = collections.Counter()
+    for dd in daily.values():
+        overall.update(dd["by"])
+    named = [n for n, _ in overall.most_common() if n != "non-bot"][:3]
+    cols = named + ["other bots", "non-bot"]
+
+    def day_row(dkey):
+        dd = daily[dkey]
+        vals = [dd["by"].get(n, 0) for n in named]
+        vals.append(sum(c for n, c in dd["by"].items() if n not in named and n != "non-bot"))
+        vals.append(dd["by"].get("non-bot", 0))
+        return dkey, dd, vals
+
+    shown = days if args.days <= 0 else days[:args.days]
+    L.append(f"\n## Daily totals ({len(shown)} of {len(days)} days)\n")
+    L.append("Day = the date in the log filename (server-local day), newest first.\n")
+    L.append(table(["Day", "Hits"] + cols + ["IPs", "During bans"],
+                   [[k, f"{dd['total']:,}"] + [f"{v:,}" for v in vals] + [f"{len(dd['ips']):,}", f"{dd['banned']:,}"]
+                    for k, dd, vals in map(day_row, shown)],
+                   ["l"] + ["r"] * (len(cols) + 3)))
+    if args.daily_csv:
+        import csv
+        with open(args.daily_csv, "w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(["day", "hits"] + cols + ["distinct_ips", "hits_during_bans"])
+            for k, dd, vals in map(day_row, sorted(days)):
+                w.writerow([k, dd["total"]] + vals + [len(dd["ips"]), dd["banned"]])
 
     # --- named crawlers
     L.append("\n## Named crawlers\n")
