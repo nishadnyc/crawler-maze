@@ -75,11 +75,16 @@ BOT_RANGE_FILE = {
 
 def open_asn(path):
     """Open a MaxMind GeoLite2-ASN .mmdb. Returns None (and the built-in table is used) if unavailable."""
-    if not path or not os.path.exists(path):
+    if not path:
+        return None
+    if not os.path.exists(path):
+        print(f"ASN database not found at {path}; using built-in table")
         return None
     try:
         import maxminddb
-        return maxminddb.open_database(path)
+        reader = maxminddb.open_database(path)
+        print(f"Using ASN database {path}")
+        return reader
     except Exception as e:  # missing package or unreadable file
         print(f"ASN database not used ({e}); falling back to built-in table")
         return None
