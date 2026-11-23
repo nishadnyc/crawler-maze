@@ -379,6 +379,26 @@ $requestPath=parse_url($_SERVER['REQUEST_URI']??'/', PHP_URL_PATH)?:'/';
 $parts=explode('.',$host);
 if(count($parts)>2){ $currentSub=$parts[0]; $baseDomain=implode('.',array_slice($parts,-2)); } else { $currentSub=''; $baseDomain=$host; }
 $currentName=$currentSub!==''?ucwords(str_replace(['-','_'],' ',$currentSub)):pick($brands);
+// ---------------------------------------------------------------------------
+// EXTERNAL HONEYTRAP DOMAINS (Nishad 2026-11-23): five domains that are
+// NOT ours - someone else pointed their A records at the maze (via
+// Nginx), so we can USE them but we cannot change their DNS / domain
+// section, and we do NOT own a wildcard for them. For a host in this
+// list the domain must therefore REMAIN THE SAME on every link: only
+// the URL path changes. No random sibling subdomains, no hash
+// subdomains, and no Domain-scoped link cookie on a parent we do not
+// own. Normal *.nishad.top hosts are unaffected (empty list = old
+// behaviour). Fill in the five domains, one per line, lowercase,
+// full host only - no scheme, no port, no trailing dot.
+// ---------------------------------------------------------------------------
+$externalHoneytrapDomains=[
+    'kamka.mooo.com',
+    'digital-murgi.chickenkiller.com',
+    'shameless-robot.crabdance.com',
+    'recorded.twilightparadox.com',
+];
+$isExternalHoneytrapDomain=in_array(strtolower($host),$externalHoneytrapDomains,true);
+if($isExternalHoneytrapDomain){ $baseDomain=$host; }
 // Visitor identity: real IP (first X-Forwarded-For entry, set by the proxy),
 // user-agent string, and the visitor's /16 subnet (IPv6: /48). Crawlers
 // rotate individual IPs inside a subnet, so the subnet - not the IP - is
@@ -777,7 +797,7 @@ $isHome=($requestPath==='/'||$requestPath==='');
 // falls back to the current host + a fresh cookie.
 $linkDomain = $host;
 $linkCookieOpts = ['expires' => $nowTs + 2592000, 'path' => '/'];
-if (str_contains($baseDomain, '.')) $linkCookieOpts['domain'] = '.' . $baseDomain;
+if (!$isExternalHoneytrapDomain && str_contains($baseDomain, '.')) $linkCookieOpts['domain'] = '.' . $baseDomain;
 $rawLinkCookie = (string)($_COOKIE['_lnk'] ?? $_COOKIE['maze_link'] ?? '');
 $cookieLinkDomain = ''; $cookieLinkTs = 0;
 if ($rawLinkCookie !== '' && str_contains($rawLinkCookie, '__')) {
@@ -795,7 +815,7 @@ if ($cookieLinkDomain === '') {
     // link domain, stored in a fresh cookie with the current time.
     $linkDomain = $host;
     setcookie('_lnk', $linkDomain . '__' . $nowTs, $linkCookieOpts);
-} elseif ($nowTs - $cookieLinkTs >= 5) {
+} elseif (!$isExternalHoneytrapDomain && $nowTs - $cookieLinkTs >= 5) {
     // This visitor's 5 seconds are up: generate ONE new random
     // subdomain (same word style buildUrl() uses for siblings),
     // update ONLY this visitor's cookie to it + a fresh timestamp,
@@ -1150,7 +1170,7 @@ foreach(['Privacy Policy','Terms of Service','Contact Us'] as $li=>$lname){ if(i
 // de-duplicated (labels are de-duplicated too, as a belt-and-braces
 // check - a repeated first segment is regenerated, not reused).
 $footerSitemapLinks=[]; $footerHosts=[]; $footerLabels=[]; $footerTries=0;
-while(count($footerSitemapLinks)<40 && $footerTries<800){ $footerTries++; $c=buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,null); $fh=parse_url($c['url'],PHP_URL_HOST); if(!$fh || isset($footerHosts[$fh]) || isset($used[$c['url']])) continue; $flabel=dedupeWords(titleWords(explode('.',$fh)[0])); if(isset($footerLabels[$flabel])) continue; $footerHosts[$fh]=true; $footerLabels[$flabel]=true; $used[$c['url']]=true; $c['label']=$flabel; $footerSitemapLinks[]=$c; }
+while(count($footerSitemapLinks)<40 && $footerTries<800){ $footerTries++; $c=buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$isExternalHoneytrapDomain?$linkDomain:null); $fh=parse_url($c['url'],PHP_URL_HOST); if(!$fh || isset($used[$c['url']])) continue; if(!$isExternalHoneytrapDomain && isset($footerHosts[$fh])) continue; $flabel=$isExternalHoneytrapDomain?dedupeWords(pathTitle($c['path'])):dedupeWords(titleWords(explode('.',$fh)[0])); if($flabel==='' || isset($footerLabels[$flabel])) continue; $footerHosts[$fh]=true; $footerLabels[$flabel]=true; $used[$c['url']]=true; $c['label']=$flabel; $footerSitemapLinks[]=$c; }
 
 // HASH COPYRIGHT LINK (Nishad 2026-11-22): exactly ONE link on the
 // whole page uses a fully generated "hash" subdomain instead of a
@@ -1168,7 +1188,7 @@ while(count($footerSitemapLinks)<40 && $footerTries<800){ $footerTries++; $c=bui
 // footer Sitemap links stay on dictionary-word subdomains.
 function makeHashLabel(): string { $len=mt_rand(6,7); $hyphPos=(mt_rand(0,1)===0)?mt_rand(2,$len-3):-1; $chars='abcdefghijklmnopqrstuvwxyz0123456789'; $out=''; $hasLetter=false; $hasDigit=false; for($i=0;$i<$len;$i++){ if($i===$hyphPos){ $out.='-'; continue; } $ch=$chars[mt_rand(0,strlen($chars)-1)]; if(ctype_alpha($ch)) $hasLetter=true; else $hasDigit=true; $out.=$ch; } if(!$hasLetter||!$hasDigit){ return makeHashLabel(); } return $out; }
 $hashLink=null; $hashTries=0;
-while($hashLink===null && $hashTries<100){ $hashTries++; $hashHost=makeHashLabel().'.'.$baseDomain; if($hashHost===$linkDomain || $hashHost===$host || isset($footerHosts[$hashHost])) continue; $hc=buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$hashHost); if(isset($used[$hc['url']])) continue; $used[$hc['url']]=true; $hashLink=$hc; }
+while($hashLink===null && $hashTries<100){ $hashTries++; $hashHost=$isExternalHoneytrapDomain?$host:makeHashLabel().'.'.$baseDomain; if(!$isExternalHoneytrapDomain && ($hashHost===$linkDomain || $hashHost===$host || isset($footerHosts[$hashHost]))) continue; $hc=buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$hashHost); if(isset($used[$hc['url']])) continue; $used[$hc['url']]=true; $hashLink=$hc; }
 if($hashLink===null){ $hashLink=['url'=>$canonical,'label'=>$brand,'path'=>$requestPath,'section'=>'']; }
 
 
