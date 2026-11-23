@@ -53,30 +53,44 @@ jobs:
         run: pip install maxminddb
 
       # MaxMind limits downloads (about 30/day), so fetch the ASN DB once per day and cache it.
+      # Only the .mmdb folder is cached, and only after a successful download.
       - name: Today's date (cache key)
         id: day
         run: echo "d=$(date -u +%F)" >> "$GITHUB_OUTPUT"
 
       - name: Restore GeoLite2-ASN cache
         id: geo
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
-          path: ${{ runner.temp }}/geo
-          key: geolite2-asn-${{ steps.day.outputs.d }}
+          path: ${{ runner.temp }}/geo/asn
+          key: geolite2-asn-v2-${{ steps.day.outputs.d }}
 
       - name: Download GeoLite2-ASN
+        id: dl
         if: steps.geo.outputs.cache-hit != 'true'
         env:
           MAXMIND_ACCOUNT_ID: ${{ secrets.MAXMIND_ACCOUNT_ID }}
           MAXMIND_LICENSE_KEY: ${{ secrets.MAXMIND_LICENSE_KEY }}
         run: |
-          mkdir -p "$GEO_DIR"
+          mkdir -p "$GEO_DIR/asn"
           if [ -z "$MAXMIND_LICENSE_KEY" ]; then echo "No MaxMind key, using built-in table"; exit 0; fi
           curl -fsSL -u "$MAXMIND_ACCOUNT_ID:$MAXMIND_LICENSE_KEY" \
             "https://download.maxmind.com/geoip/databases/GeoLite2-ASN/download?suffix=tar.gz" \
-            -o "$GEO_DIR/asn.tar.gz" || { echo "MaxMind download failed"; exit 0; }
+            -o "$GEO_DIR/asn.tar.gz" || { echo "MaxMind download failed (check account ID, license key, GeoLite terms)"; exit 0; }
           tar -xzf "$GEO_DIR/asn.tar.gz" -C "$GEO_DIR"
-          find "$GEO_DIR" -name 'GeoLite2-ASN.mmdb' -exec mv {} "$GEO_DIR/GeoLite2-ASN.mmdb" \;
+          find "$GEO_DIR" -name 'GeoLite2-ASN.mmdb' -exec mv {} "$GEO_DIR/asn/GeoLite2-ASN.mmdb" \;
+          if [ -f "$GEO_DIR/asn/GeoLite2-ASN.mmdb" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"; echo "Downloaded GeoLite2-ASN"
+          else
+            echo "Archive had no GeoLite2-ASN.mmdb"
+          fi
+
+      - name: Save GeoLite2-ASN cache
+        if: steps.dl.outputs.ok == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/geo/asn
+          key: geolite2-asn-v2-${{ steps.day.outputs.d }}
 
       - name: Download vendor IP range lists
         run: |
@@ -90,7 +104,7 @@ jobs:
       - name: Generate report
         run: |
           python scripts/generator.py --logs logs --out "$OUT_FILE" \
-            --asn-db "$GEO_DIR/GeoLite2-ASN.mmdb" --ranges-dir "$GEO_DIR/ranges"
+            --asn-db "$GEO_DIR/asn/GeoLite2-ASN.mmdb" --ranges-dir "$GEO_DIR/ranges"
 
       # Stats refresh DISABLED 2026-11-22 (issue #21): refresh_stats.py used to
       # run here on every sync and regenerated the README/Pages stats from a
