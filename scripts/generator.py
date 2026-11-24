@@ -298,25 +298,57 @@ HTML_START = "<!-- REPORT:START -->"
 HTML_END = "<!-- REPORT:END -->"
 
 
-def build_html_block(window, nfiles, tiles, bot_rows, day_cols, day_rows):
+BADGE_SPARK = ('<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><g fill="#D97757">'
+               + "".join(f'<path d="M12 1.5 L13.4 10.6 L12 12 L10.6 10.6 Z" transform="rotate({a} 12 12)"/>' for a in range(0, 360, 45))
+               + '<circle cx="12" cy="12" r="1.6"/></g></svg>')
+BADGE_RING = ('<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><g fill="none" stroke="#e6edf3" stroke-width="1.7">'
+              '<ellipse cx="12" cy="12" rx="4.2" ry="8.6"/><ellipse cx="12" cy="12" rx="4.2" ry="8.6" transform="rotate(60 12 12)"/>'
+              '<ellipse cx="12" cy="12" rx="4.2" ry="8.6" transform="rotate(120 12 12)"/></g></svg>')
+BADGE_META = ('<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><rect width="24" height="24" rx="5" fill="#1877F2"/>'
+              '<path fill="#fff" d="M13.6 21v-6.9h2.3l.35-2.7h-2.65V9.7c0-.78.22-1.31 1.34-1.31h1.43V5.98c-.25-.03-1.1-.11-2.08-.11-2.06 0-3.47 1.26-3.47 3.57v1.96H8.5v2.7h2.32V21h2.78Z"/></svg>')
+
+
+def badge_for(name):
+    n = name.lower()
+    if "claude" in n:
+        return BADGE_SPARK
+    if "gpt" in n or "oai" in n:
+        return BADGE_RING
+    if "meta" in n or "facebook" in n:
+        return BADGE_META
+    return "?"
+
+
+def build_html_block(info):
     """Numbers-only HTML for the public page. Names are escaped; no IP addresses are published."""
     e = htmllib.escape
-    out = ["<h2>All-time, kept current</h2>",
-           f'<p class="sub">Updated automatically from the maze\'s logs · {e(window)} · {nfiles:,} log files</p>',
+    out = ["<h2>The maze, so far</h2>",
+           f'<p class="sub">Updated automatically from the maze\'s logs · {e(info["window"])} · {info["nfiles"]:,} log files</p>',
            '<div class="totals">']
-    out += [f'<div class="stat"><b>{e(v)}</b><span>{e(lbl)}</span></div>' for v, lbl in tiles]
+    out += [f'<div class="stat"><b>{e(v)}</b><span>{e(lbl)}</span></div>' for v, lbl in info["tiles"]]
     out.append("</div>")
 
-    def tbl(head, rows):
-        th = "".join(f'<th class="{"n" if i else ""}">{e(h)}</th>' for i, h in enumerate(head))
-        tr = "".join("<tr>" + "".join(f'<td class="{"n" if i else ""}">{e(str(c))}</td>' for i, c in enumerate(r)) + "</tr>"
-                     for r in rows)
-        return f'<div class="rtable"><table><thead><tr>{th}</tr></thead><tbody>{tr}</tbody></table></div>'
+    def row(badge, name, count, detail):
+        return (f'<div class="bot"><div class="badge">{badge}</div><div class="body"><span class="name">{e(name)}</span> — '
+                f'<span class="count">{e(count)}</span><div class="detail">{e(detail)}</div></div></div>')
 
-    out.append('<h3 class="rh">Crawlers</h3>')
-    out.append(tbl(["Crawler", "Served", "During bans", "IPs", "Served / min"], bot_rows))
+    for r in info["bots"]:
+        out.append(row(badge_for(r["name"]), r["name"], r["count"], r["detail"]))
+    if info["others"]:
+        out.append('<h3 class="rh">Everyone else</h3>')
+        for r in info["others"]:
+            out.append(row("?", r["name"], r["count"], r["detail"]))
+    if info["chips"]:
+        chips = "".join(f'<span class="chip">{e(n)} <b>{c:,}</b></span>' for n, c in info["chips"])
+        out.append(f'<div class="looking"><h3>What they were looking for</h3><div class="chips">{chips}</div></div>')
+
+    th = "".join(f'<th class="{"n" if i else ""}">{e(h)}</th>' for i, h in enumerate(["Day (log file date)", "Hits"] + info["day_cols"]))
+    tr = "".join("<tr>" + "".join(f'<td class="{"n" if i else ""}">{e(str(c))}</td>' for i, c in enumerate(r_)) + "</tr>"
+                 for r_ in info["day_rows"])
     out.append('<h3 class="rh">Recent days</h3>')
-    out.append(tbl(["Day (log file date)", "Hits"] + day_cols, day_rows))
+    out.append(f'<div class="rtable"><table><thead><tr>{th}</tr></thead><tbody>{tr}</tbody></table></div>')
+    out.append(f'<p class="detail" style="color:#9fb3c8;font-size:.9rem;margin:12px 0 0;">Honeypot login form: '
+               f'<b style="color:#e6edf3;">{info["forms"]:,} submissions</b>.</p>')
     return "\n".join(out)
 
 
@@ -664,14 +696,45 @@ def main():
     print(f"wrote {args.out}: {total:,} hits, {len(all_ips):,} IPs, {len(subnets)} ranges")
 
     if args.html:
-        win = f"{U(first)} to {U(last)} UTC"
         tiles = [(f"{total:,}", "requests served"), (f"{ai_hits:,}", f"from named crawlers ({pct(ai_hits, total)})"),
                  (f"{len(all_ips):,}", "distinct IPs"), (f"{banned:,}", "requests during bans")]
-        bot_rows = []
-        for n, g in named_bots[:8]:
+        bots_info = []
+        for n, g in named_bots[:6]:
             hrs = (g["last"] - g["first"]) / 3600
-            bot_rows.append([n, f"{g['total']:,}", f"{g['banned']:,}", f"{len(extra['seen'].get('bot:' + n, {})):,}",
-                             f"{g['total'] / hrs / 60:.1f}" if hrs >= 0.1 else "-"])
+            ips_n = len(extra["seen"].get("bot:" + n, {}))
+            parts = [f"{ips_n:,} IP{'s' if ips_n != 1 else ''}"]
+            if hrs >= 0.1:
+                parts.append(f"{g['total'] / hrs / 60:.1f} requests/min")
+            if g["total"] and g["robots"] / g["total"] > 0.9:
+                parts.append("almost every request was a robots.txt check")
+            elif g["total"] and g["clicked"] / g["total"] > 0.5:
+                parts.append(f"follows links ({pct(g['clicked'], g['total'])})")
+            else:
+                parts.append("fetches URLs directly, never following the maze's links")
+            if g["banned"]:
+                parts.append(f"{g['banned']:,} more requests arrived while banned")
+            bots_info.append(dict(name=n, count=f"{g['total']:,} requests", detail=" · ".join(parts)))
+        others_info = []
+        for k, g in sorted(others.items(), key=lambda kv: (-kv[1]["total"], kv[0]))[:5]:
+            if g["total"] < 50:
+                continue
+            probe = collections.Counter()
+            for s_, c in g["sections"].items():
+                cat = categorize(s_)
+                if cat:
+                    probe[cat] += c
+            if probe:
+                what = "probing for " + ", ".join(c for c, _ in probe.most_common(2))
+            elif g["sections"] and set(g["sections"]) <= SITE_SECTIONS:
+                what = "only asks for " + ", ".join(sorted(g["sections"]))
+            else:
+                what = "browses the fake site"
+            ips_n = len(g["iphashes"])
+            others_info.append(dict(name=ua_label(g["ua"]), count=f"{g['total']:,} hits",
+                                    detail=f"{ips_n:,} IP{'s' if ips_n != 1 else ''} · {len(g['subnets'])} ranges · {what}"))
+        secs = collections.Counter()
+        for g in groups.values():
+            secs.update(g["sections"])
         recent = [d for d in days if d != "unknown"][:7]
         dcols = named + ["other"]
         day_rows = []
@@ -680,7 +743,10 @@ def main():
             vals = [dd["by"].get(n, 0) for n in named]
             vals.append(dd["total"] - sum(vals))
             day_rows.append([dk, f"{dd['total']:,}"] + [f"{v:,}" for v in vals])
-        update_html(args.html, build_html_block(win, nfiles, tiles, bot_rows, dcols, day_rows))
+        update_html(args.html, build_html_block(dict(
+            window=f"{U(first)} to {U(last)} UTC", nfiles=nfiles, tiles=tiles, bots=bots_info, others=others_info,
+            chips=sorted(secs.items(), key=lambda kv: (-kv[1], kv[0]))[:6], day_cols=dcols, day_rows=day_rows,
+            forms=sum(g["forms"] for g in groups.values()))))
 
 
 if __name__ == "__main__":

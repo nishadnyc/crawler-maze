@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://blog.nishad.top/crawler-maze/sitemap.xml
