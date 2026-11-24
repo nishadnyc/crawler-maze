@@ -83,6 +83,40 @@ function bumpHostCount(array &$grp, string $field, string $host): void {
     if (isset($grp[$field][$k]) || count($grp[$field]) < 50) $grp[$field][$k] = (int)($grp[$field][$k] ?? 0) + 1;
     else $grp[$field . '_other'] = (int)($grp[$field . '_other'] ?? 0) + 1;
 }
+/* Per-topic hit counters for the logs (additive: old log files simply lack these keys). Same pattern as bumpHostCount, with a caller-chosen cap and overflow into <field>_other. */
+function bumpCatalogCount(array &$grp, string $field, string $key, int $cap): void {
+    $k = substr(preg_replace('/[^a-z0-9\-]/', '', strtolower($key)), 0, 80); if ($k === '') return;
+    if (!isset($grp[$field]) || !is_array($grp[$field])) $grp[$field] = [];
+    if (isset($grp[$field][$k]) || count($grp[$field]) < $cap) $grp[$field][$k] = (int)($grp[$field][$k] ?? 0) + 1;
+    else $grp[$field . '_other'] = (int)($grp[$field . '_other'] ?? 0) + 1;
+}
+/* CATALOG SETS OF 10 (Nishad follow-up 2026-11-24): catalog topic links are
+offered in repeating sets of 10 - exactly ONE topic from EACH of the 10
+groups per set, no group bias and no same-group weighting, so a visitor's
+click among the 10 reveals genuine interest (see the topics/topic_groups
+log counters). mazeCatalogNextGroup() hands out groups from a shuffled
+queue (seeded mt_rand, so a page still renders byte-identical on repeat
+fetch); when the queue empties it refills with a fresh shuffle. The topic
+inside the group is a plain seeded pick. Legacy hosting links are NOT
+catalog links and never consume a queue slot. */
+function mazeCatalogNextGroup(): string {
+    $groups = $GLOBALS['topicGroups'] ?? [];
+    if (!$groups) return '';
+    if (empty($GLOBALS['mazeCatalogGroupQueue'])) $GLOBALS['mazeCatalogGroupQueue'] = rshuffle(array_keys($groups));
+    return (string)array_shift($GLOBALS['mazeCatalogGroupQueue']);
+}
+/* Start a fresh set of 10 (used before the main Explore list, so its sets
+align to the list start instead of mid-set leftovers from earlier links). */
+function mazeCatalogResetSet(): void { $GLOBALS['mazeCatalogGroupQueue'] = []; }
+/* Resolve a catalog topic from a requested path of the shape /learn/<group>/<topic>/<id>. Returns group+topic info or null for non-catalog paths (legacy hosting slugs included). */
+function mazeTopicFromPath(string $path): ?array {
+    $segs = explode('/', trim($path, '/'));
+    if (count($segs) !== 4 || $segs[0] !== 'learn') return null;
+    $groups = $GLOBALS['topicGroups'] ?? [];
+    $g = $groups[$segs[1]] ?? null;
+    if ($g === null || !isset($g['topics'][$segs[2]])) return null;
+    return ['group' => $segs[1], 'group_name' => $g['name'], 'slug' => $segs[2], 'name' => $g['topics'][$segs[2]]];
+}
 function slugify(string $s): string { return preg_replace('/[^a-z0-9]+/','-', strtolower($s)); }
 // Collapse consecutive duplicate words (case-insensitive): "Zone Zone" ->
 // "Zone", "Help Centre Centre" -> "Help Centre", "flexible, flexible" ->
@@ -129,6 +163,239 @@ $features=['one-click installs','automatic backups','free SSL certificates','rea
 $sections=['features','pricing','docs','support','blog','guides','tutorials','status','community','changelog','resources','about','services','solutions','products','platform','company','careers','partners','affiliates','reviews','testimonials','case-studies','webinars','events','newsroom','knowledge-base','help-centre','developers','api','integrations','marketplace','templates','tools','calculator','comparison'];
 $docPages=['getting-started','installation','configuration','best-practices','troubleshooting','api-reference','security-guide','migration','backups','performance-tips','ssl-setup','dns-settings','email-setup','database-setup','file-manager','ssh-access','ftp-guide','cron-jobs','php-settings','caching-guide','cdn-setup','staging-guide','deployment-guide','scaling-guide','monitoring-guide','billing-guide','domain-transfer','wordpress-guide','woocommerce-guide','laravel-guide'];
 $blogTopics=['improving site speed','choosing the right plan','securing your server','backing up your data','scaling your application','understanding bandwidth','setting up SSL','monitoring uptime','optimizing databases','reducing bounce rate','choosing a domain name','migrating your website','WordPress speed tips','ecommerce best practices','SEO fundamentals','content delivery explained','cloud vs shared hosting','VPS buying guide','website security checklist','email deliverability tips'];
+// ---------------------------------------------------------------------------
+// TOPIC CATALOG (100 learning topics, 10 groups x 10): the maze no longer
+// serves only hosting content. Generated links draw topics from this
+// catalog and carry group+topic in the path (/learn/<group>/<topic>/<id>),
+// the page for that URL is built about that topic (see SECTION 8), and
+// SECTION 6 logs per-group `topics` / `topic_groups` counters so analytics
+// can show what each bot group is actually interested in. Hosting stays
+// as one slice (cloud-security-and-it + the legacy $slugTopics pages).
+$topicGroups=[
+'ai-and-machine-learning'=>['name'=>'AI & Machine Learning','focus'=>'models, agents and practical AI workflows','paras'=>[
+'{topic} is one of the most looked-up subjects in {group}. This guide explains what {topic} is, why so many people and automated learners search for it, and how to approach it in a clear order, with plain examples throughout.',
+'Most people starting {topic} ask the same first questions: where to begin, what matters most, and which mistakes to avoid. Working through {group} topics like this one, the focus here is on models, agents and practical AI workflows, explained step by step rather than all at once.',
+'Progress with {topic} comes from steady practice, not shortcuts. Learn the core ideas of {topic}, try them on a small example of your own, and revisit the parts that feel hardest - that repetition is where real understanding of {topic} forms.',
+'Whether you need {topic} for work, study or personal interest, the pattern is the same: understand the fundamentals, practise them, and keep notes on what works. This page collects those fundamentals for {topic} in one place.'],'steps'=>[
+'Start with the basics of {topic}: read an overview first and note the key terms.',
+'Follow one complete worked example of {topic} from start to finish.',
+'Practise {topic} yourself on a small, low-stakes example.',
+'See how {topic} connects with the rest of {group}, especially models, agents and practical AI workflows.',
+'Build a short weekly routine so you keep improving at {topic}.',
+],'topics'=>[
+'generative-ai'=>'Generative AI',
+'prompt-engineering'=>'Prompt Engineering',
+'ai-agents'=>'AI Agents',
+'machine-learning'=>'Machine Learning',
+'ai-coding-tools'=>'AI Coding Tools',
+'natural-language-processing'=>'Natural Language Processing',
+'how-llms-work'=>'How LLMs and Neural Networks Work',
+'ai-security'=>'AI Security',
+'responsible-ai-and-ethics'=>'Responsible AI and Ethics',
+'ai-automation'=>'AI Automation',
+]],
+'programming-and-software'=>['name'=>'Programming & Software','focus'=>'languages, tools and building software step by step','paras'=>[
+'{topic} is one of the most looked-up subjects in {group}. This guide explains what {topic} is, why so many people and automated learners search for it, and how to approach it in a clear order, with plain examples throughout.',
+'Most people starting {topic} ask the same first questions: where to begin, what matters most, and which mistakes to avoid. Working through {group} topics like this one, the focus here is on languages, tools and building software step by step, explained step by step rather than all at once.',
+'Progress with {topic} comes from steady practice, not shortcuts. Learn the core ideas of {topic}, try them on a small example of your own, and revisit the parts that feel hardest - that repetition is where real understanding of {topic} forms.',
+'Whether you need {topic} for work, study or personal interest, the pattern is the same: understand the fundamentals, practise them, and keep notes on what works. This page collects those fundamentals for {topic} in one place.'],'steps'=>[
+'Start with the basics of {topic}: read an overview first and note the key terms.',
+'Follow one complete worked example of {topic} from start to finish.',
+'Practise {topic} yourself on a small, low-stakes example.',
+'See how {topic} connects with the rest of {group}, especially languages, tools and building software step by step.',
+'Build a short weekly routine so you keep improving at {topic}.',
+],'topics'=>[
+'python-programming'=>'Python Programming',
+'web-development'=>'Web Development',
+'javascript'=>'JavaScript',
+'sql-and-databases'=>'SQL and Databases',
+'programming-languages'=>'Java, C++ and Rust',
+'game-development'=>'Game Development',
+'mobile-app-development'=>'Mobile App Development',
+'debugging-code'=>'Coding and Debugging',
+'no-code-low-code'=>'No-Code and Low-Code Development',
+'git-and-version-control'=>'Git and Version Control',
+]],
+'data-and-analytics'=>['name'=>'Data & Analytics','focus'=>'turning raw data into clear decisions','paras'=>[
+'{topic} is one of the most looked-up subjects in {group}. This guide explains what {topic} is, why so many people and automated learners search for it, and how to approach it in a clear order, with plain examples throughout.',
+'Most people starting {topic} ask the same first questions: where to begin, what matters most, and which mistakes to avoid. Working through {group} topics like this one, the focus here is on turning raw data into clear decisions, explained step by step rather than all at once.',
+'Progress with {topic} comes from steady practice, not shortcuts. Learn the core ideas of {topic}, try them on a small example of your own, and revisit the parts that feel hardest - that repetition is where real understanding of {topic} forms.',
+'Whether you need {topic} for work, study or personal interest, the pattern is the same: understand the fundamentals, practise them, and keep notes on what works. This page collects those fundamentals for {topic} in one place.'],'steps'=>[
+'Start with the basics of {topic}: read an overview first and note the key terms.',
+'Follow one complete worked example of {topic} from start to finish.',
+'Practise {topic} yourself on a small, low-stakes example.',
+'See how {topic} connects with the rest of {group}, especially turning raw data into clear decisions.',
+'Build a short weekly routine so you keep improving at {topic}.',
+],'topics'=>[
+'data-science'=>'Data Science',
+'data-analytics'=>'Data Analytics',
+'data-literacy'=>'Data Literacy',
+'excel-skills'=>'Excel Skills',
+'data-storytelling'=>'Data Storytelling',
+'statistics-basics'=>'Statistics Basics',
+'data-visualization'=>'Data Visualization',
+'big-data'=>'Big Data',
+'business-intelligence'=>'Business Intelligence',
+'data-privacy'=>'Data Privacy',
+]],
+'cloud-security-and-it'=>['name'=>'Cloud, Security & IT','focus'=>'cloud platforms, security and running websites and servers','paras'=>[
+'{topic} is one of the most looked-up subjects in {group}. This guide explains what {topic} is, why so many people and automated learners search for it, and how to approach it in a clear order, with plain examples throughout.',
+'Most people starting {topic} ask the same first questions: where to begin, what matters most, and which mistakes to avoid. Working through {group} topics like this one, the focus here is on cloud platforms, security and running websites and servers, explained step by step rather than all at once.',
+'Progress with {topic} comes from steady practice, not shortcuts. Learn the core ideas of {topic}, try them on a small example of your own, and revisit the parts that feel hardest - that repetition is where real understanding of {topic} forms.',
+'Whether you need {topic} for work, study or personal interest, the pattern is the same: understand the fundamentals, practise them, and keep notes on what works. This page collects those fundamentals for {topic} in one place.'],'steps'=>[
+'Start with the basics of {topic}: read an overview first and note the key terms.',
+'Follow one complete worked example of {topic} from start to finish.',
+'Practise {topic} yourself on a small, low-stakes example.',
+'See how {topic} connects with the rest of {group}, especially cloud platforms, security and running websites and servers.',
+'Build a short weekly routine so you keep improving at {topic}.',
+],'topics'=>[
+'cloud-computing'=>'Cloud Computing and AWS',
+'microsoft-azure'=>'Microsoft Azure',
+'google-cloud'=>'Google Cloud',
+'kubernetes-and-docker'=>'Kubernetes and Docker',
+'cybersecurity'=>'Cybersecurity',
+'ethical-hacking'=>'Ethical Hacking',
+'computer-networking'=>'Computer Networking and CCNA',
+'it-support'=>'IT Support and Troubleshooting',
+'web-hosting'=>'Web Hosting',
+'wordpress-care'=>'WordPress Care',
+]],
+'business-marketing-and-finance'=>['name'=>'Business, Marketing & Finance','focus'=>'growing a business and managing money','paras'=>[
+'{topic} is one of the most looked-up subjects in {group}. This guide explains what {topic} is, why so many people and automated learners search for it, and how to approach it in a clear order, with plain examples throughout.',
+'Most people starting {topic} ask the same first questions: where to begin, what matters most, and which mistakes to avoid. Working through {group} topics like this one, the focus here is on growing a business and managing money, explained step by step rather than all at once.',
+'Progress with {topic} comes from steady practice, not shortcuts. Learn the core ideas of {topic}, try them on a small example of your own, and revisit the parts that feel hardest - that repetition is where real understanding of {topic} forms.',
+'Whether you need {topic} for work, study or personal interest, the pattern is the same: understand the fundamentals, practise them, and keep notes on what works. This page collects those fundamentals for {topic} in one place.'],'steps'=>[
+'Start with the basics of {topic}: read an overview first and note the key terms.',
+'Follow one complete worked example of {topic} from start to finish.',
+'Practise {topic} yourself on a small, low-stakes example.',
+'See how {topic} connects with the rest of {group}, especially growing a business and managing money.',
+'Build a short weekly routine so you keep improving at {topic}.',
+],'topics'=>[
+'digital-marketing'=>'Digital Marketing',
+'seo-fundamentals'=>'SEO',
+'ai-marketing'=>'AI-Driven Marketing',
+'starting-a-business'=>'Starting a Business',
+'creator-economy'=>'The Creator Economy',
+'e-commerce'=>'E-Commerce',
+'personal-finance'=>'Personal Finance',
+'investing-and-trading'=>'Investing and Stock Trading',
+'cryptocurrency-and-blockchain'=>'Cryptocurrency and Blockchain',
+'accounting-and-taxes'=>'Accounting and Taxes',
+]],
+'career-and-professional-skills'=>['name'=>'Career & Professional Skills','focus'=>'getting hired, communicating and leading at work','paras'=>[
+'{topic} is one of the most looked-up subjects in {group}. This guide explains what {topic} is, why so many people and automated learners search for it, and how to approach it in a clear order, with plain examples throughout.',
+'Most people starting {topic} ask the same first questions: where to begin, what matters most, and which mistakes to avoid. Working through {group} topics like this one, the focus here is on getting hired, communicating and leading at work, explained step by step rather than all at once.',
+'Progress with {topic} comes from steady practice, not shortcuts. Learn the core ideas of {topic}, try them on a small example of your own, and revisit the parts that feel hardest - that repetition is where real understanding of {topic} forms.',
+'Whether you need {topic} for work, study or personal interest, the pattern is the same: understand the fundamentals, practise them, and keep notes on what works. This page collects those fundamentals for {topic} in one place.'],'steps'=>[
+'Start with the basics of {topic}: read an overview first and note the key terms.',
+'Follow one complete worked example of {topic} from start to finish.',
+'Practise {topic} yourself on a small, low-stakes example.',
+'See how {topic} connects with the rest of {group}, especially getting hired, communicating and leading at work.',
+'Build a short weekly routine so you keep improving at {topic}.',
+],'topics'=>[
+'project-management'=>'Project Management',
+'leadership'=>'Leadership',
+'critical-thinking'=>'Critical Thinking and Problem Solving',
+'public-speaking'=>'Public Speaking',
+'communication-skills'=>'Communication Skills',
+'interview-prep'=>'Interview Preparation',
+'job-hunting-and-resumes'=>'Job Hunting and Resumes',
+'freelancing-and-side-hustles'=>'Freelancing and Side Hustles',
+'remote-work'=>'Remote Work',
+'time-management'=>'Time Management and Productivity',
+]],
+'creative-design-and-media'=>['name'=>'Creative, Design & Media','focus'=>'design, images, video, music and writing','paras'=>[
+'{topic} is one of the most looked-up subjects in {group}. This guide explains what {topic} is, why so many people and automated learners search for it, and how to approach it in a clear order, with plain examples throughout.',
+'Most people starting {topic} ask the same first questions: where to begin, what matters most, and which mistakes to avoid. Working through {group} topics like this one, the focus here is on design, images, video, music and writing, explained step by step rather than all at once.',
+'Progress with {topic} comes from steady practice, not shortcuts. Learn the core ideas of {topic}, try them on a small example of your own, and revisit the parts that feel hardest - that repetition is where real understanding of {topic} forms.',
+'Whether you need {topic} for work, study or personal interest, the pattern is the same: understand the fundamentals, practise them, and keep notes on what works. This page collects those fundamentals for {topic} in one place.'],'steps'=>[
+'Start with the basics of {topic}: read an overview first and note the key terms.',
+'Follow one complete worked example of {topic} from start to finish.',
+'Practise {topic} yourself on a small, low-stakes example.',
+'See how {topic} connects with the rest of {group}, especially design, images, video, music and writing.',
+'Build a short weekly routine so you keep improving at {topic}.',
+],'topics'=>[
+'ux-ui-design'=>'UX/UI Design',
+'graphic-design'=>'Graphic Design',
+'video-editing'=>'Video Editing and Filmmaking',
+'photography-and-videography'=>'Photography and Videography',
+'music-production'=>'Music Production',
+'playing-instruments'=>'Playing Instruments',
+'drawing-and-painting'=>'Drawing and Painting',
+'animation-and-3d'=>'Animation and 3D',
+'creative-writing'=>'Creative Writing',
+'content-creation'=>'Content Creation',
+]],
+'health-fitness-and-wellness'=>['name'=>'Health, Fitness & Wellness','focus'=>'body, mind, food and everyday wellbeing','paras'=>[
+'{topic} is one of the most looked-up subjects in {group}. This guide explains what {topic} is, why so many people and automated learners search for it, and how to approach it in a clear order, with plain examples throughout.',
+'Most people starting {topic} ask the same first questions: where to begin, what matters most, and which mistakes to avoid. Working through {group} topics like this one, the focus here is on body, mind, food and everyday wellbeing, explained step by step rather than all at once.',
+'Progress with {topic} comes from steady practice, not shortcuts. Learn the core ideas of {topic}, try them on a small example of your own, and revisit the parts that feel hardest - that repetition is where real understanding of {topic} forms.',
+'Whether you need {topic} for work, study or personal interest, the pattern is the same: understand the fundamentals, practise them, and keep notes on what works. This page collects those fundamentals for {topic} in one place.'],'steps'=>[
+'Start with the basics of {topic}: read an overview first and note the key terms.',
+'Follow one complete worked example of {topic} from start to finish.',
+'Practise {topic} yourself on a small, low-stakes example.',
+'See how {topic} connects with the rest of {group}, especially body, mind, food and everyday wellbeing.',
+'Build a short weekly routine so you keep improving at {topic}.',
+],'topics'=>[
+'health-and-symptoms'=>'Health and Symptoms',
+'mental-health'=>'Mental Health',
+'stress-and-burnout'=>'Stress and Burnout',
+'fitness-and-strength'=>'Fitness and Strength Training',
+'yoga-and-pilates'=>'Yoga and Pilates',
+'meditation-and-mindfulness'=>'Meditation and Mindfulness',
+'nutrition-and-meal-prep'=>'Nutrition and Meal Prep',
+'sleep-improvement'=>'Sleep Improvement',
+'weight-loss'=>'Weight Loss',
+'first-aid-and-cpr'=>'First Aid and CPR',
+]],
+'school-science-and-knowledge'=>['name'=>'School, Science & Knowledge','focus'=>'school subjects, science and big questions','paras'=>[
+'{topic} is one of the most looked-up subjects in {group}. This guide explains what {topic} is, why so many people and automated learners search for it, and how to approach it in a clear order, with plain examples throughout.',
+'Most people starting {topic} ask the same first questions: where to begin, what matters most, and which mistakes to avoid. Working through {group} topics like this one, the focus here is on school subjects, science and big questions, explained step by step rather than all at once.',
+'Progress with {topic} comes from steady practice, not shortcuts. Learn the core ideas of {topic}, try them on a small example of your own, and revisit the parts that feel hardest - that repetition is where real understanding of {topic} forms.',
+'Whether you need {topic} for work, study or personal interest, the pattern is the same: understand the fundamentals, practise them, and keep notes on what works. This page collects those fundamentals for {topic} in one place.'],'steps'=>[
+'Start with the basics of {topic}: read an overview first and note the key terms.',
+'Follow one complete worked example of {topic} from start to finish.',
+'Practise {topic} yourself on a small, low-stakes example.',
+'See how {topic} connects with the rest of {group}, especially school subjects, science and big questions.',
+'Build a short weekly routine so you keep improving at {topic}.',
+],'topics'=>[
+'mathematics'=>'Mathematics',
+'science-explained'=>'Science Explained Simply',
+'physics-chemistry-biology'=>'Physics, Chemistry and Biology',
+'astronomy-and-space'=>'Astronomy and Space',
+'history'=>'History',
+'literature'=>'Literature',
+'language-learning'=>'Language Learning',
+'exam-prep'=>'Exam Preparation',
+'psychology'=>'Psychology',
+'philosophy'=>'Philosophy',
+]],
+'life-home-and-hobbies'=>['name'=>'Life, Home & Hobbies','focus'=>'cooking, home, family and everyday skills','paras'=>[
+'{topic} is one of the most looked-up subjects in {group}. This guide explains what {topic} is, why so many people and automated learners search for it, and how to approach it in a clear order, with plain examples throughout.',
+'Most people starting {topic} ask the same first questions: where to begin, what matters most, and which mistakes to avoid. Working through {group} topics like this one, the focus here is on cooking, home, family and everyday skills, explained step by step rather than all at once.',
+'Progress with {topic} comes from steady practice, not shortcuts. Learn the core ideas of {topic}, try them on a small example of your own, and revisit the parts that feel hardest - that repetition is where real understanding of {topic} forms.',
+'Whether you need {topic} for work, study or personal interest, the pattern is the same: understand the fundamentals, practise them, and keep notes on what works. This page collects those fundamentals for {topic} in one place.'],'steps'=>[
+'Start with the basics of {topic}: read an overview first and note the key terms.',
+'Follow one complete worked example of {topic} from start to finish.',
+'Practise {topic} yourself on a small, low-stakes example.',
+'See how {topic} connects with the rest of {group}, especially cooking, home, family and everyday skills.',
+'Build a short weekly routine so you keep improving at {topic}.',
+],'topics'=>[
+'cooking-and-recipes'=>'Cooking and Recipes',
+'baking-and-cuisines'=>'Baking and World Cuisines',
+'travel-planning'=>'Travel Planning',
+'relationships-and-communication'=>'Relationships and Communication',
+'parenting'=>'Parenting and Child Development',
+'home-improvement-and-diy'=>'Home Improvement and DIY',
+'gardening'=>'Gardening',
+'pet-care'=>'Pet Care and Dog Training',
+'interior-design'=>'Interior Design',
+'learning-how-to-learn'=>'Learning How to Learn',
+]],
+];
+$GLOBALS['topicGroups']=$topicGroups;
+$topicNameBySlug=[]; foreach($topicGroups as $tgSlug=>$tgDef){ foreach($tgDef['topics'] as $ttSlug=>$ttName){ $topicNameBySlug[$ttSlug]=$ttName; } } $GLOBALS['topicNameBySlug']=$topicNameBySlug;
+
 $taglines=['Fast, dependable hosting for sites that need to stay online','Clear pricing, honest support and servers that stay out of your way','Built for builders, loved by businesses everywhere','The hosting platform teams switch to and stay with','Everything you need to launch, run and grow a website','Dependable infrastructure with support from people who host sites themselves','Simple plans that scale as your traffic grows','Hosting set up properly, so you can get on with your work'];
 $planNames=['Starter','Growth','Business','Pro','Turbo','Mega','Ultra','Cloud Nine','Launch','Scale','Enterprise','Creator','Developer','Agency'];
 $testimonials=[['My site loaded before I finished clicking. I checked twice.','Dan, indie maker'],['Support answered at 2am. At 2am! I was not even awake properly.','Marta, shop owner'],['We migrated on a Friday and nothing broke. Nobody believed us either.','Tom, developer'],['Our old host sent us a farewell email. It was just a blank page.','Ana, blogger'],['Uptime is so boring now. Nothing ever goes down to complain about.','Chris, agency lead'],['I understood the dashboard on the first try. That never happens.','Jo, first-time founder'],['Page speed doubled overnight after the move.','Priya, ecommerce manager'],['The staging tool saved our launch. Twice in one week.','Leo, product lead']];
@@ -591,6 +858,11 @@ if ($sf) {
         $grp['last_host'] = $host;
         bumpHostCount($grp, 'hosts', $host);
         $grp['last_path'] = substr($requestPath, 0, 120);
+        // TOPIC INTEREST (additive): for catalog topic URLs, count which
+        // topic and which topic group this bot group visited, so analytics
+        // can rank the 100 topics by bot interest. Old logs lack the keys.
+        $catTopicHit = mazeTopicFromPath($requestPath);
+        if ($catTopicHit !== null) { bumpCatalogCount($grp, 'topics', $catTopicHit['slug'], 100); bumpCatalogCount($grp, 'topic_groups', $catTopicHit['group'], 20); }
         // Honeypot: a POST with the login_form marker is a form submission.
         // The first 5 per group are logged in full (host, path, timestamp and
         // the submitted field values, trimmed to 120 chars each); each also
@@ -710,6 +982,9 @@ if (!$mazePathOk) {
     // the two-segment legacy shape is a valid maze path too -
     // otherwise long-lived bots bounce off 404s on their backlog
     // instead of re-entering the maze.
+    // TOPIC CATALOG SHAPE: /learn/<group>/<topic>/<id> for a catalog group+topic.
+    if (count($pseg) === 4 && $pseg[0] === 'learn' && isset($topicGroups[$pseg[1]]) && isset($topicGroups[$pseg[1]]['topics'][$pseg[2]])
+        && preg_match('/^\d{5}$/', $pseg[3]) && (int)$pseg[3] >= 10000 && (int)$pseg[3] <= 89999) $mazePathOk = true;
     if (count($pseg) === 2 && in_array($pseg[0], $sections, true)
         && preg_match('/^\d{4}$/', $pseg[1]) && (int)$pseg[1] >= 2000 && (int)$pseg[1] <= 3000) $mazePathOk = true;
 }
@@ -753,10 +1028,10 @@ if (str_ends_with($requestPath, 'sitemap.xml')) {
     // as page dates instead of all landing within the last 5 days.
     mt_srand(crc32($host . '|' . $todayStr));
     $smPick = function (array $a) { return $a[mt_rand(0, count($a) - 1)]; };
-    $smUsed = []; $smLinks = []; $tries = 0;
+    $smUsed = []; $smLinks = []; $tries = 0; $smGroupQueue = [];
     while (count($smLinks) < 50 && $tries < 1000) {
         $tries++;
-        $spath = '/' . $smPick($sections) . '/' . trim(slugify(titleWords($smPick($docPages))), '-') . '/' . mt_rand(10000, 89999);
+        if ($topicGroups && mt_rand(0, 9) < 7) { if (empty($smGroupQueue)) { $smGroupQueue = array_keys($topicGroups); for ($si = count($smGroupQueue) - 1; $si > 0; $si--) { $sj = mt_rand(0, $si); $stmp = $smGroupQueue[$si]; $smGroupQueue[$si] = $smGroupQueue[$sj]; $smGroupQueue[$sj] = $stmp; } } $sgSlug = array_shift($smGroupQueue); $stKeys = array_keys($topicGroups[$sgSlug]['topics']); $spath = '/learn/' . $sgSlug . '/' . $stKeys[mt_rand(0, count($stKeys) - 1)] . '/' . mt_rand(10000, 89999); } else $spath = '/' . $smPick($sections) . '/' . trim(slugify(titleWords($smPick($docPages))), '-') . '/' . mt_rand(10000, 89999);
         if (isset($smUsed[$spath])) continue;
         $smUsed[$spath] = true;
         $smLinks[] = ['url' => $scheme . '://' . $host . $port . $spath,
@@ -910,13 +1185,44 @@ function pathTitle($path): string { $parts=[]; foreach(explode('/',trim((string)
 // Settings', 'DNS Settings Explained', ...). The old host-name + full-path
 // title labels ('Create Base Docs Dns Settings') read as keyword salad,
 // and the random-prefix patch loops that masked them are gone.
-function slugTopicName(string $slug): string { $t=$GLOBALS['slugTopics'][$slug]??null; return ($t!==null && isset($t['name'])) ? $t['name'] : titleWords($slug); }
+function slugTopicName(string $slug): string { $t=$GLOBALS['slugTopics'][$slug]??null; if($t!==null && isset($t['name'])) return $t['name']; $cn=$GLOBALS['topicNameBySlug'][$slug]??null; return $cn!==null ? $cn : titleWords($slug); }
 function topicLinkLabel(string $section, string $slug): string { $name=slugTopicName($slug); $t=$GLOBALS['slugTopics'][$slug]??null; /* LABEL TAUTOLOGY FIX (cold reviews 2026-11-22): never stack a template word the topic name already ends with - a topic called 'FTP Guide' must never become 'Guide to FTP Guide' or 'Caching Guide Guide'. */ $nameWords=explode(' ',$name); $lastWord=strtolower((string)end($nameWords)); $pool=[$name,$name.' Explained',$name.' Overview',$name.' Step by Step','About '.$name]; if($lastWord!=='guide'){ $pool[]=$name.' Guide'; $pool[]='Guide to '.$name; } if($lastWord!=='checklist'){ $pool[]=$name.' Checklist'; } if(in_array($section,['blog','newsroom','resources'],true) && $t!==null && !empty($t['titles'])){ $pool=array_merge($t['titles'],$pool); } return dedupeWords($pool[mt_rand(0,count($pool)-1)]); }
-function buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$linkHost=null): array { if($linkHost!==null && $linkHost!==''){ $w=explode('.',$linkHost)[0]; $urlHost=$linkHost; } else { $w=pick($subWords); if(mt_rand(0,2)===0) $w.='-'.pick($subWords); $urlHost=$w.'.'.$baseDomain; } $s=pick($sections); $slug=trim(slugify(titleWords(pick($docPages))),'-'); if($slug==='') $slug=$s; $basePath='/'.$s.'/'.$slug; $id=mt_rand(10000,89999); $idGuard=0; while(isset($GLOBALS['mazeUsedIds'][$id]) && $GLOBALS['mazeUsedIds'][$id]!==$basePath && $idGuard<400){ $id=mt_rand(10000,89999); $idGuard++; } $GLOBALS['mazeUsedIds'][$id]=$basePath; $path=$basePath.'/'.$id; $label=topicLinkLabel($s,$slug); return ['label'=>$label,'url'=>$scheme.'://'.$urlHost.$port.$path,'path'=>$path,'section'=>$s]; }
+function buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$linkHost=null): array { if($linkHost!==null && $linkHost!==''){ $w=explode('.',$linkHost)[0]; $urlHost=$linkHost; } else { $w=pick($subWords); if(mt_rand(0,2)===0) $w.='-'.pick($subWords); $urlHost=$w.'.'.$baseDomain; }
+    // TOPIC CATALOG LINKS: most generated links now point at a catalog topic
+    // page /learn/<group>/<topic>/<id> instead of a hosting doc slug. The
+    // group comes from mazeCatalogNextGroup() - repeating sets of 10 with
+    // exactly one topic per group, NO same-group weighting (Nishad
+    // follow-up 2026-11-24, overrides the earlier ~60% same-group rule);
+    // ~1 in 10 links keeps the legacy hosting shape and is not a catalog
+    // link. Under $GLOBALS['mazeForceCatalog'] (the Explore list) every
+    // link is a catalog link, so the list is purely sets of 10.
+    $topicGroups=$GLOBALS['topicGroups']??[];
+    $roll=!empty($GLOBALS['mazeForceCatalog']) ? 0 : mt_rand(0,9);
+    if($topicGroups && $roll<9){
+        $gSlug=mazeCatalogNextGroup();
+        if($gSlug==='' || !isset($topicGroups[$gSlug])) { $gKeys=array_keys($topicGroups); $gSlug=$gKeys[mt_rand(0,count($gKeys)-1)]; }
+        $tKeys=array_keys($topicGroups[$gSlug]['topics']); $slug=$tKeys[mt_rand(0,count($tKeys)-1)];
+        $s='learn'; $basePath='/learn/'.$gSlug.'/'.$slug;
+        $id=mt_rand(10000,89999); $idGuard=0; while(isset($GLOBALS['mazeUsedIds'][$id]) && $GLOBALS['mazeUsedIds'][$id]!==$basePath && $idGuard<400){ $id=mt_rand(10000,89999); $idGuard++; } $GLOBALS['mazeUsedIds'][$id]=$basePath; $path=$basePath.'/'.$id; $label=topicLinkLabel($s,$slug); return ['label'=>$label,'url'=>$scheme.'://'.$urlHost.$port.$path,'path'=>$path,'section'=>$s,'topic'=>$slug,'group'=>$gSlug];
+    }
+    $s=pick($sections); $slug=trim(slugify(titleWords(pick($docPages))),'-'); if($slug==='') $slug=$s; $basePath='/'.$s.'/'.$slug; $id=mt_rand(10000,89999); $idGuard=0; while(isset($GLOBALS['mazeUsedIds'][$id]) && $GLOBALS['mazeUsedIds'][$id]!==$basePath && $idGuard<400){ $id=mt_rand(10000,89999); $idGuard++; } $GLOBALS['mazeUsedIds'][$id]=$basePath; $path=$basePath.'/'.$id; $label=topicLinkLabel($s,$slug); return ['label'=>$label,'url'=>$scheme.'://'.$urlHost.$port.$path,'path'=>$path,'section'=>$s]; }
 // De-duplicates by URL (via $used, shared across lists) AND by label
 // within the returned list, so every visible title in one list is
 // distinct even though the trailing path number is not part of it.
-function uniqueLinks($n,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,&$used,$linkHost=null,$topicCap=0): array { $out=[];$tries=0;$labels=[];$topicCounts=[]; while(count($out)<$n&&$tries<$n*60){ $tries++; $c=buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$linkHost); if(isset($used[$c['url']])||isset($labels[$c['label']])) continue; /* SAME-TOPIC CAP (cold reviews 2026-11-22): within one capped list (the Explore block) a single slug topic may appear at most $topicCap times, so one topic cannot fill a block with reworded variants of itself ('Caching Guide' / 'Caching Guide Explained' / 'Caching Guide Overview' / ...). Different SECTIONS for the same topic still count toward the cap - section variety alone was not enough. */ if($topicCap>0){ $cSegs=explode('/',trim($c['path'],'/')); $cSlug=$cSegs[1]??''; if($cSlug!=='' && ($topicCounts[$cSlug]??0)>=$topicCap) continue; } $used[$c['url']]=true; $labels[$c['label']]=true; if($topicCap>0 && $cSlug!=='') $topicCounts[$cSlug]=($topicCounts[$cSlug]??0)+1; $out[]=$c; } return $out; }
+function uniqueLinks($n,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,&$used,$linkHost=null,$topicCap=0,$catalogSets=false): array {
+    /* CATALOG SETS MODE (main Explore list): exactly $n catalog links
+    ($n is a multiple of 10 at the call site) in repeating sets of 10 -
+    one topic from each group per set. A fresh set starts at the list
+    start. Candidates are never rejected for label/topic-cap reasons
+    (that would drop a group slot and break the set); a URL collision
+    re-rolls ONLY the trailing id, never the group. Within one set all
+    topics differ, so labels (which name their topic) stay distinct. */
+    if($catalogSets){ mazeCatalogResetSet(); $prevForce=$GLOBALS['mazeForceCatalog']??false; $GLOBALS['mazeForceCatalog']=true; $out=[]; $guard=0;
+        while(count($out)<$n && $guard<$n*20){ $guard++; $c=buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$linkHost); if(($c['section']??'')!=='learn') continue;
+            $idTries=0; while(isset($used[$c['url']]) && $idTries<20){ $idTries++; $newId=mt_rand(10000,89999); if(isset($GLOBALS['mazeUsedIds'][$newId])) continue; $bp=preg_replace('#/\d+$#','',$c['path']); $GLOBALS['mazeUsedIds'][$newId]=$bp; $c['path']=$bp.'/'.$newId; $c['url']=preg_replace('#/\d+$#','/'.$newId,$c['url']); }
+            if(isset($used[$c['url']])) continue; $used[$c['url']]=true; $out[]=$c; }
+        $GLOBALS['mazeForceCatalog']=$prevForce; return $out; }
+    $out=[];$tries=0;$labels=[];$topicCounts=[]; while(count($out)<$n&&$tries<$n*60){ $tries++; $c=buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$linkHost); if(isset($used[$c['url']])||isset($labels[$c['label']])) continue; /* SAME-TOPIC CAP (cold reviews 2026-11-22): within one capped list (the Explore block) a single slug topic may appear at most $topicCap times, so one topic cannot fill a block with reworded variants of itself ('Caching Guide' / 'Caching Guide Explained' / 'Caching Guide Overview' / ...). Different SECTIONS for the same topic still count toward the cap - section variety alone was not enough. */ if($topicCap>0){ $cSegs=explode('/',trim($c['path'],'/')); $cSlug=($cSegs[0]??'')==='learn' ? ($cSegs[2]??'') : ($cSegs[1]??''); if($cSlug!=='' && ($topicCounts[$cSlug]??0)>=$topicCap) continue; } $used[$c['url']]=true; $labels[$c['label']]=true; if($topicCap>0 && $cSlug!=='') $topicCounts[$cSlug]=($topicCounts[$cSlug]??0)+1; $out[]=$c; } return $out; }
 
 // ---------------------------------------------------------------------------
 // SEEDED PER-HOST STABILITY (Nishad 2026-11-22): NO storage of any
@@ -1052,6 +1358,17 @@ if(in_array($layout,['article','guide'],true)) $heading=pick($articleTitles);
 // Legacy /<section>/<number> URLs and the homepage have no slug and
 // keep the previous behaviour.
 $pageSegs=explode('/', trim($requestPath,'/'));
+// TOPIC CATALOG PAGE: /learn/<group>/<topic>/<id> resolves to a catalog
+// topic; its heading, paragraphs and steps below are built about THAT
+// topic (mirroring the requested URL), under the unchanged page seed.
+$catalogTopic=mazeTopicFromPath($requestPath);
+$GLOBALS['mazeCurrentTopicGroup']=$catalogTopic['group']??'';
+if($catalogTopic!==null){
+    $category=$catalogTopic['group_name'];
+    $heading=$catalogTopic['name'].' - '.$brand;
+    $title=$catalogTopic['name'].' - '.$brand;
+    if(in_array($layout,['article','guide','docs'],true)){ $heading=$catalogTopic['name']; $title=$catalogTopic['name'].' - '.$brand; }
+}
 $pageSlug=(count($pageSegs)>=3 && in_array($pageSegs[1], $docPages, true)) ? $pageSegs[1] : '';
 $slugTopic=($pageSlug!=='' && isset($slugTopics[$pageSlug])) ? $slugTopics[$pageSlug] : null;
 if($slugTopic!==null){
@@ -1072,6 +1389,7 @@ $myFeatures=array_map(fn($fd)=>$fd[0], $featDetailsSel); $myTags=picks($tags,14)
 // are prepended to the seeded generic picks and the list is de-duplicated.
 $pageTags=[];
 if($slugTopic!==null) $pageTags[]=$slugTopic['name'];
+if($catalogTopic!==null){ $pageTags[]=$catalogTopic['name']; $pageTags[]=$catalogTopic['group_name']; }
 if($pageSection!=='') $pageTags[]=titleWords($pageSection);
 $pageTags[]=$category; $pageTags[]=ucwords($topic);
 foreach($pageTags as $pt2){ if(!in_array($pt2,$myTags,true)) array_unshift($myTags,$pt2); }
@@ -1096,6 +1414,14 @@ $mySteps=picks($howtoSteps,6);
 // own steps - so a docs page for ssl-setup gives SSL steps, not generic
 // ones. The host's standard blocks (plans, FAQs, testimonials) still
 // surround the topic content, as they do on real hosting sites.
+if($catalogTopic!==null && $slugTopic===null){
+    $catGroupDef=$topicGroups[$catalogTopic['group']];
+    $catParas=[];
+    foreach(picks($catGroupDef['paras'],3) as $cp3){ $catParas[]=str_replace(['{topic}','{group}','{brand}','{city}'],[$catalogTopic['name'],$catalogTopic['group_name'],$brand,$geoPlace['name']],$cp3); }
+    $paragraphs=array_merge([$catParas[0],$catParas[1]], array_slice($paragraphs,0,2), [$catParas[2]], array_slice($paragraphs,2,2));
+    $catSteps=[]; foreach($catGroupDef['steps'] as $cs3){ $catSteps[]=str_replace(['{topic}','{group}'],[$catalogTopic['name'],$catalogTopic['group_name']],$cs3); }
+    $mySteps=picks($catSteps, min(5,count($catSteps)));
+}
 if($slugTopic!==null){
     $topicParas=[];
     foreach(picks($slugTopic['paras'],3) as $tp2){ $topicParas[]=str_replace(['{brand}','{city}'],[$brand,$geoPlace['name']],$tp2); }
@@ -1174,9 +1500,13 @@ $used[$trialLink['url']]=true;
 // different field names, no logging, no cookie).
 $isTrialPage=($requestPath===$trialLink['path']);
 $signupDone=$isTrialPage && (($_SERVER['REQUEST_METHOD'] ?? '')==='POST') && isset($_POST['signup_form']);
-$exploreCount=['home'=>80,'article'=>48,'guide'=>40,'docs'=>32,'pricing'=>24,'company'=>24,'status'=>16][$layout] ?? 40;
-// Explore same-topic cap: at most 2 links per slug topic in the block (the homepage's 80 links across only 30 topics force a floor of 3 there - ceil(80/30) - or the block could not reach its usual count).
-$links=uniqueLinks($exploreCount,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain,max(2,(int)ceil($exploreCount/max(1,count($slugTopics)))));
+// EXPLORE SETS OF 10 (Nishad follow-up 2026-11-24): the Explore list is
+// purely catalog topic links in whole sets of 10 (one topic from each of
+// the 10 groups per set, no legacy hosting links inside the sets), so
+// every count here is a multiple of 10 - the old per-layout counts
+// (48/32/24/16) are rounded to the nearest whole set.
+$exploreCount=['home'=>80,'article'=>50,'guide'=>40,'docs'=>30,'pricing'=>20,'company'=>20,'status'=>10][$layout] ?? 40;
+$links=uniqueLinks($exploreCount,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain,0,true);
 // EXPLORE FIVE (Nishad 2026-11-23): take five of the Explore links
 // just generated and swap their hosts for the five fixed external
 // honeytrap domains - same generated URLs, only the domain changes,
@@ -1201,7 +1531,7 @@ while(count($relatedLinks)<6 && $relTries<60){ $relTries++; $rc=buildUrl($scheme
 // (from that slug's $slugTopics titles), de-duplicated across the 6
 // cards. Hrefs still stay on the visitor's cookie link domain.
 $relatedLabelsUsed=[];
-foreach($relatedLinks as &$relatedLink){ $rSegs=explode('/',trim($relatedLink['path'],'/')); $rSlug=$rSegs[1]??''; $rTitles=$slugTopics[$rSlug]['titles']??[]; if($rTitles){ $rCand=null; foreach(rshuffle($rTitles) as $rt2){ if(!isset($relatedLabelsUsed[$rt2])){ $rCand=$rt2; break; } } if($rCand===null) $rCand=topicLinkLabel($relatedLink['section'],$rSlug); if(!isset($relatedLabelsUsed[$rCand])){ $relatedLabelsUsed[$rCand]=true; $relatedLink['label']=$rCand; } } }
+foreach($relatedLinks as &$relatedLink){ $rSegs=explode('/',trim($relatedLink['path'],'/')); $rSlug=($rSegs[0]??'')==='learn' ? ($rSegs[2]??'') : ($rSegs[1]??''); $rTitles=$slugTopics[$rSlug]['titles']??[]; if($rTitles){ $rCand=null; foreach(rshuffle($rTitles) as $rt2){ if(!isset($relatedLabelsUsed[$rt2])){ $rCand=$rt2; break; } } if($rCand===null) $rCand=topicLinkLabel($relatedLink['section'],$rSlug); if(!isset($relatedLabelsUsed[$rCand])){ $relatedLabelsUsed[$rCand]=true; $relatedLink['label']=$rCand; } } }
 
 $footerLinks=uniqueLinks(40,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain);
 $navLinks=uniqueLinks(8,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain);
