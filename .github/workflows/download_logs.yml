@@ -42,7 +42,7 @@ jobs:
       - name: Download files from server
         run: |
           ssh "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" \
-            "sudo tar -czf - -C ${{ secrets.SERVER_PATH }} ./logs ./.maze-bans.json ./.maze-domain.json" \
+            "sudo tar -czf - -C ${{ secrets.SERVER_PATH }} ./logs ./.maze-bans.json" \
             | tar -xzf - -C .
 
       # ---- Report generation (runs after logs are synced, before the commit) ----
@@ -118,7 +118,7 @@ jobs:
         run: |
           git config user.name "${{ github.actor }}"
           git config user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
-          git add logs .maze-bans.json .maze-domain.json README.md docs/index.html
+          git add logs .maze-bans.json README.md docs/index.html
           if ! git diff --staged --quiet; then
             git commit -m "Updated Logs"
             git push origin main
