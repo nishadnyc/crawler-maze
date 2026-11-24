@@ -8,6 +8,7 @@ import argparse
 import collections
 import datetime as dt
 import glob
+import html as htmllib
 import ipaddress
 import json
 import os
@@ -75,11 +76,16 @@ BOT_RANGE_FILE = {
 
 def open_asn(path):
     """Open a MaxMind GeoLite2-ASN .mmdb. Returns None (and the built-in table is used) if unavailable."""
-    if not path or not os.path.exists(path):
+    if not path:
+        return None
+    if not os.path.exists(path):
+        print(f"ASN database not found at {path}; using built-in table")
         return None
     try:
         import maxminddb
-        return maxminddb.open_database(path)
+        reader = maxminddb.open_database(path)
+        print(f"Using ASN database {path}")
+        return reader
     except Exception as e:  # missing package or unreadable file
         print(f"ASN database not used ({e}); falling back to built-in table")
         return None
@@ -169,7 +175,7 @@ def categorize(path):
 # ---------------------------------------------------------------------- load
 def new_group():
     return dict(total=0, clicked=0, direct=0, robots=0, banned=0, bans=0, forms=0,
-                subnets=set(), ips=set(), iphashes=set(), sections=collections.Counter(),
+                subnets=set(), ips=set(), iphashes=set(), sections=collections.Counter(), hosts=collections.Counter(), hosts_banned=collections.Counter(),
                 ua="", first=10**12, last=0)
 
 
@@ -180,6 +186,8 @@ def load(logs_dir):
     subnets = collections.defaultdict(lambda: dict(total=0, ips=set(), banned=0))
     all_ips, hosts = set(), set()
     botips = collections.defaultdict(set)
+    extra = dict(seen=collections.defaultdict(dict), botday=collections.defaultdict(lambda: collections.defaultdict(set)), bans=[])
+    daily = collections.defaultdict(lambda: dict(total=0, banned=0, by=collections.Counter(), ips=set()))
     ban_entries = 0
     for f in files:
         try:
@@ -187,6 +195,12 @@ def load(logs_dir):
         except (OSError, ValueError):
             continue
         sn = d.get("subnet", "unknown")
+        m = re.search(r"(\d{4}-\d{2}-\d{2})\.json$", f)
+        day_key = m.group(1) if m else "unknown"
+        day = daily[day_key]
+        for bk, bv in d.get("bans", {}).items():
+            extra["bans"].append((bk.split(":")[0], bv.get("since", 0), bv.get("until", 0), bv.get("user_agent", "")))
+        day["ips"].update(d.get("ips", {}))
         ban_entries += len(d.get("bans", {}))
         for ip, v in d.get("ips", {}).items():
             all_ips.add(ip)
@@ -194,6 +208,9 @@ def load(logs_dir):
             a = v.get("agent", "")
             if a.startswith("bot:"):
                 botips[a].add(ip)
+                lo, hi = extra["seen"][a].get(ip, (10**12, 0))
+                extra["seen"][a][ip] = (min(lo, v.get("first_seen", lo)), max(hi, v.get("last_seen", hi)))
+                extra["botday"][a][day_key].add(ip)
         for key, g in d.get("groups", {}).items():
             x = groups[key]
             for k, src in (("total", "total"), ("clicked", "clicked"), ("direct", "direct"),
@@ -202,6 +219,9 @@ def load(logs_dir):
             x["forms"] += g.get("form_submissions", 0)
             x["subnets"].add(sn)
             x["iphashes"].update(g.get("ip_hashes", {}))
+            for fld in ("hosts", "hosts_banned"):
+                if isinstance(g.get(fld), dict):
+                    x[fld].update({h: c for h, c in g[fld].items() if isinstance(c, int)})
             x["ua"] = g.get("user_agent", x["ua"])
             x["first"] = min(x["first"], g.get("first_seen", x["first"]))
             x["last"] = max(x["last"], g.get("last_seen", x["last"]))
@@ -209,11 +229,14 @@ def load(logs_dir):
                 x["sections"].update(g["sections"])
             if g.get("last_host"):
                 hosts.add(g["last_host"])
+            day["total"] += g.get("total", 0)
+            day["banned"] += g.get("banned_hits", 0)
+            day["by"][key[4:] if key.startswith("bot:") else "non-bot"] += g.get("total", 0)
             subnets[sn]["total"] += g.get("total", 0)
             subnets[sn]["banned"] += g.get("banned_hits", 0)
     for a, ips in botips.items():
         groups[a]["ips"] |= ips
-    return groups, subnets, all_ips, hosts, ban_entries, len(files)
+    return groups, subnets, all_ips, hosts, ban_entries, len(files), daily, extra
 
 
 # -------------------------------------------------------------------- render
@@ -248,6 +271,107 @@ def ua_label(ua):
     return ua[:50]
 
 
+def bot_of_ua(ua):
+    for n in ("ClaudeBot", "OAI-SearchBot", "GPTBot", "Claude-User", "ChatGPT-User"):
+        if n in ua:
+            return n
+    m = re.search(r"([A-Za-z][\w.-]*[Bb]ot)", ua)
+    return m.group(1) if m else "non-bot"
+
+
+def median(xs):
+    xs = sorted(xs)
+    n = len(xs)
+    return 0 if not n else (xs[n // 2] if n % 2 else (xs[n // 2 - 1] + xs[n // 2]) / 2)
+
+
+def entropy_ratio(counts):
+    vals = [v for v in counts if v > 0]
+    if len(vals) < 2:
+        return 0.0
+    t = sum(vals)
+    h = -sum(v / t * __import__("math").log2(v / t) for v in vals)
+    return h / __import__("math").log2(len(vals))
+
+
+HTML_START = "<!-- REPORT:START -->"
+HTML_END = "<!-- REPORT:END -->"
+
+
+BADGE_SPARK = ('<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><g fill="#D97757">'
+               + "".join(f'<path d="M12 1.5 L13.4 10.6 L12 12 L10.6 10.6 Z" transform="rotate({a} 12 12)"/>' for a in range(0, 360, 45))
+               + '<circle cx="12" cy="12" r="1.6"/></g></svg>')
+BADGE_RING = ('<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><g fill="none" stroke="#e6edf3" stroke-width="1.7">'
+              '<ellipse cx="12" cy="12" rx="4.2" ry="8.6"/><ellipse cx="12" cy="12" rx="4.2" ry="8.6" transform="rotate(60 12 12)"/>'
+              '<ellipse cx="12" cy="12" rx="4.2" ry="8.6" transform="rotate(120 12 12)"/></g></svg>')
+BADGE_META = ('<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><rect width="24" height="24" rx="5" fill="#1877F2"/>'
+              '<path fill="#fff" d="M13.6 21v-6.9h2.3l.35-2.7h-2.65V9.7c0-.78.22-1.31 1.34-1.31h1.43V5.98c-.25-.03-1.1-.11-2.08-.11-2.06 0-3.47 1.26-3.47 3.57v1.96H8.5v2.7h2.32V21h2.78Z"/></svg>')
+
+
+def badge_for(name):
+    n = name.lower()
+    if "claude" in n:
+        return BADGE_SPARK
+    if "gpt" in n or "oai" in n:
+        return BADGE_RING
+    if "meta" in n or "facebook" in n:
+        return BADGE_META
+    return "?"
+
+
+def build_html_block(info):
+    """Numbers-only HTML for the public page. Names are escaped; no IP addresses are published."""
+    e = htmllib.escape
+    out = ["<h2>The maze, so far</h2>",
+           f'<p class="sub">Updated automatically from the maze\'s logs · {e(info["window"])} · {info["nfiles"]:,} log files</p>',
+           '<div class="totals">']
+    out += [f'<div class="stat"><b>{e(v)}</b><span>{e(lbl)}</span></div>' for v, lbl in info["tiles"]]
+    out.append("</div>")
+
+    def row(badge, name, count, detail):
+        return (f'<div class="bot"><div class="badge">{badge}</div><div class="body"><span class="name">{e(name)}</span> — '
+                f'<span class="count">{e(count)}</span><div class="detail">{e(detail)}</div></div></div>')
+
+    for r in info["bots"]:
+        out.append(row(badge_for(r["name"]), r["name"], r["count"], r["detail"]))
+    if info["others"]:
+        out.append('<h3 class="rh">Everyone else</h3>')
+        for r in info["others"]:
+            out.append(row("?", r["name"], r["count"], r["detail"]))
+    if info["chips"]:
+        chips = "".join(f'<span class="chip">{e(n)} <b>{c:,}</b></span>' for n, c in info["chips"])
+        out.append(f'<div class="looking"><h3>What they were looking for</h3><div class="chips">{chips}</div></div>')
+
+    th = "".join(f'<th class="{"n" if i else ""}">{e(h)}</th>' for i, h in enumerate(["Day (log file date)", "Hits"] + info["day_cols"]))
+    tr = "".join("<tr>" + "".join(f'<td class="{"n" if i else ""}">{e(str(c))}</td>' for i, c in enumerate(r_)) + "</tr>"
+                 for r_ in info["day_rows"])
+    out.append('<h3 class="rh">Recent days</h3>')
+    out.append(f'<div class="rtable"><table><thead><tr>{th}</tr></thead><tbody>{tr}</tbody></table></div>')
+    out.append(f'<p class="detail" style="color:#9fb3c8;font-size:.9rem;margin:12px 0 0;">Honeypot login form: '
+               f'<b style="color:#e6edf3;">{info["forms"]:,} submissions</b>.</p>')
+    return "\n".join(out)
+
+
+def update_html(path, block):
+    """Replace only what sits between the REPORT markers. Missing markers: warn and leave the file alone."""
+    try:
+        text = open(path, encoding="utf-8").read()
+    except OSError as ex:
+        print(f"HTML not updated ({ex})")
+        return
+    i, j = text.find(HTML_START), text.find(HTML_END)
+    if i < 0 or j < i:
+        print(f"HTML not updated: {HTML_START} / {HTML_END} markers not found in {path}")
+        return
+    new = text[:i + len(HTML_START)] + "\n" + block + "\n" + text[j:]
+    if new != text:
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(new)
+        print(f"updated {path}")
+    else:
+        print(f"{path} already up to date")
+
+
 def esc(s):
     return s.replace("|", "\\|")
 
@@ -257,11 +381,14 @@ def main():
     ap.add_argument("--logs", default="logs")
     ap.add_argument("--out", default="readme.md")
     ap.add_argument("--top-ua", type=int, default=15)
+    ap.add_argument("--days", type=int, default=30, help="days shown in the daily table (0 = all)")
+    ap.add_argument("--daily-csv", default="", help="also write every day to this CSV file")
+    ap.add_argument("--html", default="", help="HTML page containing REPORT:START/END markers to refresh (optional)")
     ap.add_argument("--asn-db", default="", help="path to GeoLite2-ASN.mmdb (optional)")
     ap.add_argument("--ranges-dir", default="", help="folder with vendor range JSON files (optional)")
     args = ap.parse_args()
 
-    groups, subnets, all_ips, hosts, ban_entries, nfiles = load(args.logs)
+    groups, subnets, all_ips, hosts, ban_entries, nfiles, daily, extra = load(args.logs)
     if not groups:
         raise SystemExit(f"No usable logs found in {args.logs}/")
 
@@ -303,6 +430,165 @@ def main():
     m = rows[0][1]
     L.append(table(["Source", "Hits", "Share", ""],
                    [[n, f"{v:,}", pct(v, total), f"`{bar(v, m)}`"] for n, v in rows], ["l", "r", "r", "l"]))
+
+    # --- daily breakdown
+    days = sorted((d for d in daily if d != "unknown"), reverse=True)
+    if "unknown" in daily:
+        days.append("unknown")
+    overall = collections.Counter()
+    for dd in daily.values():
+        overall.update(dd["by"])
+    named = [n for n, _ in overall.most_common() if n != "non-bot"][:3]
+    cols = named + ["other bots", "non-bot"]
+
+    def day_row(dkey):
+        dd = daily[dkey]
+        vals = [dd["by"].get(n, 0) for n in named]
+        vals.append(sum(c for n, c in dd["by"].items() if n not in named and n != "non-bot"))
+        vals.append(dd["by"].get("non-bot", 0))
+        return dkey, dd, vals
+
+    shown = days if args.days <= 0 else days[:args.days]
+    L.append(f"\n## Daily totals ({len(shown)} of {len(days)} days)\n")
+    L.append("Day = the date in the log filename (server-local day), newest first.\n")
+    L.append(table(["Day", "Hits"] + cols + ["IPs", "During bans"],
+                   [[k, f"{dd['total']:,}"] + [f"{v:,}" for v in vals] + [f"{len(dd['ips']):,}", f"{dd['banned']:,}"]
+                    for k, dd, vals in map(day_row, shown)],
+                   ["l"] + ["r"] * (len(cols) + 3)))
+    if args.daily_csv:
+        import csv
+        with open(args.daily_csv, "w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(["day", "hits"] + cols + ["distinct_ips", "hits_during_bans"])
+            for k, dd, vals in map(day_row, sorted(days)):
+                w.writerow([k, dd["total"]] + vals + [len(dd["ips"]), dd["banned"]])
+
+    # --- requests received (served + logged during bans)
+    L.append("\n## Requests received (served plus logged during bans)\n")
+    L.append("`Served` is the maze's normal hit counter. `During bans` counts requests that arrived while the "
+             "source was banned and were tarpitted. Together they show how hard each source really pushes.\n")
+    recv = [(k[4:] if k.startswith("bot:") else "non-bot", g["total"], g["banned"]) for k, g in bots.items()]
+    recv.append(("non-bot", sum(g["total"] for g in others.values()), sum(g["banned"] for g in others.values())))
+    recv.sort(key=lambda r: -(r[1] + r[2]))
+    rtot = sum(a + b for _, a, b in recv) or 1
+    mx = (recv[0][1] + recv[0][2]) if recv else 1
+    L.append(table(["Source", "Served", "During bans", "Received", "Share", "% of requests banned", ""],
+                   [[n, f"{a:,}", f"{b:,}", f"{a + b:,}", pct(a + b, rtot), pct(b, a + b), f"`{bar(a + b, mx)}`"]
+                    for n, a, b in recv], ["l", "r", "r", "r", "r", "r", "l"]))
+
+    # --- crawler behaviour
+    named_bots = [(k[4:], g) for k, g in sorted(bots.items(), key=lambda kv: -kv[1]["total"]) if g["total"] >= 20]
+    if named_bots:
+        L.append("\n## Crawler behaviour\n")
+        rows = []
+        for n, g in named_bots:
+            k = "bot:" + n
+            hrs = (g["last"] - g["first"]) / 3600
+            seen = extra["seen"].get(k, {})
+            life = [(b - a) / 3600 for a, b in seen.values()]
+            single = sum(1 for a, b in seen.values() if b - a < 60)
+            rate = f"{g['total'] / hrs / 60:.1f}" if hrs >= 0.1 else "-"
+            rate_all = f"{(g['total'] + g['banned']) / hrs / 60:.1f}" if hrs >= 0.1 else "-"
+            rows.append([n, rate, rate_all, f"{len(seen):,}", f"{single:,}",
+                         f"{median(life):.1f}" if life else "-", f"{max(life):.1f}" if life else "-"])
+        L.append("**Pace and IP use.** Single-use IPs were seen for under a minute. Requests per minute are averaged over each bot's own active window.\n")
+        L.append(table(["Bot", "Served req/min", "Incl. banned req/min", "IPs", "Single-use IPs", "Median IP lifetime (h)", "Longest (h)"],
+                       rows, ["l", "r", "r", "r", "r", "r", "r"]))
+
+        # IP churn per day
+        ds = sorted({d for n, _ in named_bots for d in extra["botday"].get("bot:" + n, {})})[-7:]
+        if len(ds) >= 1:
+            seen_before = {n: set() for n, _ in named_bots}
+            for n, _ in named_bots:
+                for d in sorted(extra["botday"].get("bot:" + n, {})):
+                    if d < ds[0]:
+                        seen_before[n] |= extra["botday"]["bot:" + n][d]
+            rows = []
+            for d in ds:
+                row = [d]
+                for n, _ in named_bots:
+                    cur = extra["botday"].get("bot:" + n, {}).get(d, set())
+                    new = cur - seen_before[n]
+                    seen_before[n] |= cur
+                    row.append(f"{len(cur)} (+{len(new)})" if cur else "-")
+                rows.append(row)
+            L.append("\n**IP churn per day.** Active IPs, with brand-new IPs in brackets. A bot that keeps finding new IPs has a pool larger than what has been seen.\n")
+            L.append(table(["Day"] + [n for n, _ in named_bots], rows, ["l"] + ["r"] * len(named_bots)))
+
+        # bans
+        bb = collections.defaultdict(list)
+        for kind, since, until, ua in extra["bans"]:
+            bb[bot_of_ua(ua)].append((since, kind, until))
+        rows = []
+        for n, lst in sorted(bb.items(), key=lambda kv: -len(kv[1])):
+            lst.sort()
+            kinds = collections.Counter(k for _, k, _ in lst)
+            gaps = [b[0] - a[0] for a, b in zip(lst, lst[1:]) if b[0] > a[0]]
+            hours = collections.Counter(dt.datetime.fromtimestamp(s_, dt.timezone.utc).hour for s_, _, _ in lst)
+            lens = collections.Counter(round((u - s_) / 60) for s_, _, u in lst)
+            rows.append([n, f"{len(lst):,}", ", ".join(f"{k} {c}" for k, c in kinds.most_common()),
+                         f"{median(gaps):.0f}" if gaps else "-", f"{hours.most_common(1)[0][0]:02d}:00",
+                         ", ".join(f"{m} min" for m, _ in lens.most_common(2))])
+        if rows:
+            L.append("\n**Bans.** A median gap equal to the ban length means the source is re-banned the moment each ban expires.\n")
+            L.append(table(["Bot", "Bans", "By kind", "Median gap between bans (s)", "Busiest hour (UTC)", "Ban length"],
+                           rows, ["l", "r", "l", "r", "r", "l"]))
+
+        # section focus
+        rows = []
+        for n, g in named_bots:
+            sec = {s_: c for s_, c in g["sections"].items() if s_ not in SITE_SECTIONS}
+            tot_c = sum(sec.values())
+            if tot_c < 100:
+                continue
+            top4 = sec and sum(c for _, c in collections.Counter(sec).most_common(4))
+            rows.append([n, f"{tot_c:,}", len(sec), pct(top4, tot_c), f"{entropy_ratio(sec.values()):.2f}",
+                         ", ".join(f"{s_} {c:,}" for s_, c in collections.Counter(sec).most_common(4))])
+        if rows:
+            L.append("\n**Section focus.** Evenness runs from 0 (one section only) to 1 (perfectly even). robots.txt, sitemap.xml and favicon.ico are excluded.\n")
+            L.append(table(["Bot", "Content requests", "Sections", "Top-4 share", "Evenness", "Top sections"],
+                           rows, ["l", "r", "r", "r", "r", "l"]))
+
+    # --- per-domain breakdown (only present in logs written after per-host counting was added)
+    host_served = collections.Counter()
+    host_banned = collections.Counter()
+    host_bots = collections.defaultdict(collections.Counter)
+    for k, g in groups.items():
+        label = k[4:] if k.startswith("bot:") else "non-bot"
+        for h, c in g["hosts"].items():
+            host_served[h] += c
+            host_bots[h][label] += c
+        host_banned.update(g["hosts_banned"])
+    if host_served or host_banned:
+        covered = sum(host_served.values())
+        L.append("\n## Hits by domain\n")
+        L.append(f"Per-host counting covers {covered:,} of {total:,} served hits ({pct(covered, total)}). "
+                 "Older logs have no hostname data, so this grows as new logs arrive.\n")
+
+        def base_of(h):
+            parts = h.split(".")
+            return ".".join(parts[-2:]) if len(parts) > 2 else h
+
+        by_base = collections.defaultdict(lambda: dict(hosts=set(), served=0, banned=0, bots=collections.Counter()))
+        for h in set(host_served) | set(host_banned):
+            b = by_base[base_of(h)]
+            b["hosts"].add(h)
+            b["served"] += host_served.get(h, 0)
+            b["banned"] += host_banned.get(h, 0)
+            b["bots"].update(host_bots.get(h, {}))
+        rows = [[f"`{k}`", len(v["hosts"]), f"{v['served']:,}", f"{v['banned']:,}",
+                 ", ".join(f"{n} {c:,}" for n, c in v["bots"].most_common(3))]
+                for k, v in sorted(by_base.items(), key=lambda kv: (-(kv[1]["served"] + kv[1]["banned"]), kv[0]))[:20]]
+        L.append("**By base domain** (last two labels, so a few multi-part suffixes may group oddly)\n")
+        L.append(table(["Domain", "Hostnames", "Served", "During bans", "Top bots (served)"], rows,
+                       ["l", "r", "r", "r", "l"]))
+        top_hosts = sorted(set(host_served) | set(host_banned),
+                           key=lambda h: (-(host_served.get(h, 0) + host_banned.get(h, 0)), h))[:15]
+        L.append("\n**Busiest hostnames**\n")
+        L.append(table(["Hostname", "Served", "During bans", "Top bots (served)"],
+                       [[f"`{h}`", f"{host_served.get(h, 0):,}", f"{host_banned.get(h, 0):,}",
+                         ", ".join(f"{n} {c:,}" for n, c in host_bots[h].most_common(3))] for h in top_hosts],
+                       ["l", "r", "r", "l"]))
 
     # --- named crawlers
     L.append("\n## Named crawlers\n")
@@ -408,6 +694,59 @@ def main():
     with open(args.out, "w", encoding="utf-8") as fh:
         fh.write("\n".join(L) + "\n")
     print(f"wrote {args.out}: {total:,} hits, {len(all_ips):,} IPs, {len(subnets)} ranges")
+
+    if args.html:
+        tiles = [(f"{total:,}", "requests served"), (f"{ai_hits:,}", f"from named crawlers ({pct(ai_hits, total)})"),
+                 (f"{len(all_ips):,}", "distinct IPs"), (f"{banned:,}", "requests during bans")]
+        bots_info = []
+        for n, g in named_bots[:6]:
+            hrs = (g["last"] - g["first"]) / 3600
+            ips_n = len(extra["seen"].get("bot:" + n, {}))
+            parts = [f"{ips_n:,} IP{'s' if ips_n != 1 else ''}"]
+            if hrs >= 0.1:
+                parts.append(f"{g['total'] / hrs / 60:.1f} requests/min")
+            if g["total"] and g["robots"] / g["total"] > 0.9:
+                parts.append("almost every request was a robots.txt check")
+            elif g["total"] and g["clicked"] / g["total"] > 0.5:
+                parts.append(f"follows links ({pct(g['clicked'], g['total'])})")
+            else:
+                parts.append("fetches URLs directly, never following the maze's links")
+            if g["banned"]:
+                parts.append(f"{g['banned']:,} more requests arrived while banned")
+            bots_info.append(dict(name=n, count=f"{g['total']:,} requests", detail=" · ".join(parts)))
+        others_info = []
+        for k, g in sorted(others.items(), key=lambda kv: (-kv[1]["total"], kv[0]))[:5]:
+            if g["total"] < 50:
+                continue
+            probe = collections.Counter()
+            for s_, c in g["sections"].items():
+                cat = categorize(s_)
+                if cat:
+                    probe[cat] += c
+            if probe:
+                what = "probing for " + ", ".join(c for c, _ in probe.most_common(2))
+            elif g["sections"] and set(g["sections"]) <= SITE_SECTIONS:
+                what = "only asks for " + ", ".join(sorted(g["sections"]))
+            else:
+                what = "browses the fake site"
+            ips_n = len(g["iphashes"])
+            others_info.append(dict(name=ua_label(g["ua"]), count=f"{g['total']:,} hits",
+                                    detail=f"{ips_n:,} IP{'s' if ips_n != 1 else ''} · {len(g['subnets'])} ranges · {what}"))
+        secs = collections.Counter()
+        for g in groups.values():
+            secs.update(g["sections"])
+        recent = [d for d in days if d != "unknown"][:7]
+        dcols = named + ["other"]
+        day_rows = []
+        for dk in recent:
+            dd = daily[dk]
+            vals = [dd["by"].get(n, 0) for n in named]
+            vals.append(dd["total"] - sum(vals))
+            day_rows.append([dk, f"{dd['total']:,}"] + [f"{v:,}" for v in vals])
+        update_html(args.html, build_html_block(dict(
+            window=f"{U(first)} to {U(last)} UTC", nfiles=nfiles, tiles=tiles, bots=bots_info, others=others_info,
+            chips=sorted(secs.items(), key=lambda kv: (-kv[1], kv[0]))[:6], day_cols=dcols, day_rows=day_rows,
+            forms=sum(g["forms"] for g in groups.values()))))
 
 
 if __name__ == "__main__":

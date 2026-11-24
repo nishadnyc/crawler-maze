@@ -379,6 +379,32 @@ $requestPath=parse_url($_SERVER['REQUEST_URI']??'/', PHP_URL_PATH)?:'/';
 $parts=explode('.',$host);
 if(count($parts)>2){ $currentSub=$parts[0]; $baseDomain=implode('.',array_slice($parts,-2)); } else { $currentSub=''; $baseDomain=$host; }
 $currentName=$currentSub!==''?ucwords(str_replace(['-','_'],' ',$currentSub)):pick($brands);
+// ---------------------------------------------------------------------------
+// EXTERNAL HONEYTRAP DOMAINS (Nishad 2026-11-23): five fixed domains
+// that are NOT ours - someone else pointed their A records at the
+// maze (via Nginx), so we can use them but cannot change their DNS.
+// Their ONLY use in the maze: in the Explore block, five of the
+// generated links have their host swapped for one of these five
+// (same generated URL, only the domain changes - see EXPLORE FIVE
+// below). Everything else - all random domain generation included -
+// stays exactly as it was. One per line, lowercase, full host only -
+// no scheme, no port, no trailing dot; delete a line to remove it.
+// ---------------------------------------------------------------------------
+$externalHoneytrapDomains=[
+    'kamka.mooo.com',
+    'digital-murgi.chickenkiller.com',
+    'shameless-robot.crabdance.com',
+    'recorded.twilightparadox.com',
+    'cleo.chickenkiller.com',
+];
+$isExternalHoneytrapDomain=in_array(strtolower($host),$externalHoneytrapDomains,true);
+// A visitor who lands ON one of the five: their random domain
+// generation must run on OUR domain (nishad.top), never on the
+// provider parent (mooo.com, chickenkiller.com, ...) - those random
+// subdomains are not ours and do not point at the maze. Without
+// this, a visit to cleo.chickenkiller.com turns the whole page
+// into *.chickenkiller.com links and nishad.top never appears.
+if($isExternalHoneytrapDomain){ $baseDomain='nishad.top'; }
 // Visitor identity: real IP (first X-Forwarded-For entry, set by the proxy),
 // user-agent string, and the visitor's /16 subnet (IPv6: /48). Crawlers
 // rotate individual IPs inside a subnet, so the subnet - not the IP - is
@@ -777,13 +803,13 @@ $isHome=($requestPath==='/'||$requestPath==='');
 // falls back to the current host + a fresh cookie.
 $linkDomain = $host;
 $linkCookieOpts = ['expires' => $nowTs + 2592000, 'path' => '/'];
-if (str_contains($baseDomain, '.')) $linkCookieOpts['domain'] = '.' . $baseDomain;
+if (!$isExternalHoneytrapDomain && str_contains($baseDomain, '.')) $linkCookieOpts['domain'] = '.' . $baseDomain;
 $rawLinkCookie = (string)($_COOKIE['_lnk'] ?? $_COOKIE['maze_link'] ?? '');
 $cookieLinkDomain = ''; $cookieLinkTs = 0;
 if ($rawLinkCookie !== '' && str_contains($rawLinkCookie, '__')) {
     [$cld, $clt] = explode('__', $rawLinkCookie, 2);
     $cld = strtolower(trim($cld));
-    $cldValid = ($cld === $baseDomain || str_ends_with($cld, '.' . $baseDomain))
+    $cldValid = ($cld === $baseDomain || str_ends_with($cld, '.' . $baseDomain) || in_array($cld, $externalHoneytrapDomains, true))
         && preg_match('/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/', $cld);
     if ($cldValid && preg_match('/^\d{1,12}$/', trim($clt))) {
         $tsCand = (int)trim($clt);
@@ -795,6 +821,26 @@ if ($cookieLinkDomain === '') {
     // link domain, stored in a fresh cookie with the current time.
     $linkDomain = $host;
     setcookie('_lnk', $linkDomain . '__' . $nowTs, $linkCookieOpts);
+    if ($isExternalHoneytrapDomain) {
+        // STALE-COOKIE TRAP FIX (2026-11-23): older deployed versions
+        // set the _lnk cookie with Domain=.<provider parent> (e.g.
+        // .chickenkiller.com, .mooo.com) and stored random subdomains
+        // of that parent in it. Those stale cookies (30-day expiry)
+        // fail validation under the current rules, so without this
+        // every request falls into this no-session fallback forever:
+        // the stale parent-domain cookie keeps arriving and shadowing
+        // the fresh host-only cookie, and the visitor stays stuck
+        // seeing 100% of links on the visited domain and never gets
+        // a session. Kill the parent-domain variants of both cookie
+        // names with an expired Set-Cookie so the fresh host-only
+        // cookie takes over on the next request.
+        $hostParts = explode('.', strtolower($host));
+        if (count($hostParts) > 2) {
+            $killOpts = ['expires' => $nowTs - 3600, 'path' => '/', 'domain' => '.' . implode('.', array_slice($hostParts, -2))];
+            setcookie('_lnk', '', $killOpts);
+            setcookie('maze_link', '', $killOpts);
+        }
+    }
 } elseif ($nowTs - $cookieLinkTs >= 5) {
     // This visitor's 5 seconds are up: generate ONE new random
     // subdomain (same word style buildUrl() uses for siblings),
@@ -1100,6 +1146,11 @@ $signupDone=$isTrialPage && (($_SERVER['REQUEST_METHOD'] ?? '')==='POST') && iss
 $exploreCount=['home'=>80,'article'=>48,'guide'=>40,'docs'=>32,'pricing'=>24,'company'=>24,'status'=>16][$layout] ?? 40;
 // Explore same-topic cap: at most 2 links per slug topic in the block (the homepage's 80 links across only 30 topics force a floor of 3 there - ceil(80/30) - or the block could not reach its usual count).
 $links=uniqueLinks($exploreCount,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,$used,$linkDomain,max(2,(int)ceil($exploreCount/max(1,count($slugTopics)))));
+// EXPLORE FIVE (Nishad 2026-11-23): take five of the Explore links
+// just generated and swap their hosts for the five fixed external
+// honeytrap domains - same generated URLs, only the domain changes,
+// one link per fixed domain. Nothing else in the maze changes.
+if(!empty($externalHoneytrapDomains)){ $extIdx=0; foreach($externalHoneytrapDomains as $extHost){ if(!isset($links[$extIdx])) break; $links[$extIdx]['url']=preg_replace('#^([a-z]+://)[^/]+#i', '$1'.$extHost, $links[$extIdx]['url']); $extIdx++; } }
 // Explore labels come straight from buildUrl() now (see REALISTIC LINK
 // LABELS there): each label names its own destination's slug topic.
 // The old random-prefix patch loop that masked the host-derived
