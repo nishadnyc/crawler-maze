@@ -377,7 +377,7 @@ $scheme=(!empty($_SERVER['HTTPS'])&&$_SERVER['HTTPS']!=='off')||(($_SERVER['HTTP
 $hostHeader=$_SERVER['HTTP_HOST']??'localhost'; $host=$hostHeader; $port='';
 if(str_contains($hostHeader,':')){ [$host,$p]=explode(':',$hostHeader,2); if(!(($scheme==='http'&&$p==='80')||($scheme==='https'&&$p==='443'))) $port=':'.$p; }
 $requestPath=parse_url($_SERVER['REQUEST_URI']??'/', PHP_URL_PATH)?:'/';
-$isCreatorProfile=($requestPath==='/about/nishad/2026');
+$isCreatorProfile=(bool)preg_match('#^/about/nishad/(?:\d{4}|\d{10})$#',$requestPath);
 $parts=explode('.',$host);
 if(count($parts)>2){ $currentSub=$parts[0]; $baseDomain=implode('.',array_slice($parts,-2)); } else { $currentSub=''; $baseDomain=$host; }
 $currentName=$currentSub!==''?ucwords(str_replace(['-','_'],' ',$currentSub)):pick($brands);
@@ -686,7 +686,7 @@ $probePath = (bool)preg_match('#^/(wp-|xmlrpc\.php|\.env|\.git|phpinfo)#i', $req
 $lastSeg = substr($requestPath, strrpos($requestPath, '/') + 1);
 if ($requestPath !== '/robots.txt' && !str_ends_with($requestPath, 'sitemap.xml')
     && preg_match('/\.[a-z0-9]+$/i', $lastSeg)) $probePath = true;
-$mazePathOk = ($requestPath === '/' || $requestPath === '/robots.txt' || str_ends_with($requestPath, 'sitemap.xml'));
+$mazePathOk = ($requestPath === '/' || $requestPath === '/robots.txt' || str_ends_with($requestPath, 'sitemap.xml') || $isCreatorProfile);
 if ($probePath) $mazePathOk = false;
 if (!$mazePathOk) {
     $pseg = explode('/', trim($requestPath, '/'));
@@ -792,9 +792,12 @@ if (str_ends_with($requestPath, 'sitemap.xml')) {
 // and from maze_session (honeypot) - neither of those is touched.
 // ---------------------------------------------------------------------------
 $canonical=$scheme.'://'.$host.$port.$requestPath;
-// Keep the creator credit uncommon but stable for every URL.  This uses a
-// hash rather than the seeded PRNG, so it does not alter generated page copy.
-$showCreatorCredit=!$isCreatorProfile && (hexdec(substr(hash('sha256','creator-credit|'.$host.'|'.$requestPath),0,2))%6===0);
+// Show the creator credit on 40% of normal maze URLs. These hashes avoid the
+// seeded PRNG, so neither the credit nor its timestamp-style profile URL
+// alters generated page copy and both stay stable for a given source URL.
+$showCreatorCredit=!$isCreatorProfile && (hexdec(substr(hash('sha256','creator-credit|'.$host.'|'.$requestPath),0,8))%100<40);
+$creatorProfileTimestamp=1704067200+(hexdec(substr(hash('sha256','creator-profile|'.$host.'|'.$requestPath),0,8))%90000000);
+$creatorProfilePath='/about/nishad/'.$creatorProfileTimestamp;
 // Homepage detection: the homepage is the request path '/' (or empty).
 // It must present as a website, not an article (see the og:/JSON-LD
 // rules in SECTION 8 below); every other path keeps article behaviour.
@@ -1402,7 +1405,7 @@ header('Link: <'.$canonical.'>; rel="canonical"');
 <?php /* The hidden honeypot login form: positioned far off-screen, never shown to humans. Fields are ONLY Login email, Login username and Login password - exactly what a login form asks for (the old version also carried Website / Full name / Message fields, which no login form has - audit B8). Rendered only when the group is under 5 submissions AND the visitor sent no maze_session cookie. */ ?>
 <?php if (!empty($showHiddenForm)): ?><form class="hpform" method="post" action="" style="position:absolute;left:-9999px;top:-9999px" aria-hidden="true"><input type="hidden" name="login_form" value="1"><label>Login email <input type="email" name="email" tabindex="-1" autocomplete="email"></label><label>Login username <input type="text" name="username" tabindex="-1" autocomplete="username"></label><label>Login password <input type="password" name="password" tabindex="-1" autocomplete="current-password"></label><button type="submit" tabindex="-1">Log in</button></form><?php endif; ?>
 <?php /* Footer: 40 maze links under a "Sitemap" heading, each on its OWN random subdomain (see $footerSitemapLinks above), copyright line, random page reference. */ ?>
-<footer><h2 style="font-size:16px">Sitemap</h2><?php foreach($footerSitemapLinks as $l): ?><a href="<?=e($l['url'])?>"><?=e($l['label'])?></a><?php endforeach; ?><p><?php foreach($legalLinks as $ll): ?><a href="<?=e($ll['url'])?>"><?=e($ll['label'])?></a><?php endforeach; ?></p><p>&copy; <?=date('Y')?> <a href="<?=e($hashLink['url'])?>"><?=e($brand)?></a>. All rights reserved. &middot; Last updated <?=e($updated)?> &middot; Ref <?=e($pageRef)?> &middot; <?=e($category)?> &middot; <?=e(implode(' | ',array_slice($myTags,0,5)))?></p><?php if($showCreatorCredit): ?><p>Project notes by <a href="<?=e($scheme.'://'.$host.$port.'/about/nishad/2026')?>"><?=e($projectCreator['name'])?></a>.</p><?php endif; ?></footer>
+<footer><h2 style="font-size:16px">Sitemap</h2><?php foreach($footerSitemapLinks as $l): ?><a href="<?=e($l['url'])?>"><?=e($l['label'])?></a><?php endforeach; ?><p><?php foreach($legalLinks as $ll): ?><a href="<?=e($ll['url'])?>"><?=e($ll['label'])?></a><?php endforeach; ?></p><p>&copy; <?=date('Y')?> <a href="<?=e($hashLink['url'])?>"><?=e($brand)?></a>. All rights reserved. &middot; Last updated <?=e($updated)?> &middot; Ref <?=e($pageRef)?> &middot; <?=e($category)?> &middot; <?=e(implode(' | ',array_slice($myTags,0,5)))?></p><?php if($showCreatorCredit): ?><p>Project notes by <a href="<?=e($scheme.'://'.$host.$port.$creatorProfilePath)?>"><?=e($projectCreator['name'])?></a>.</p><?php endif; ?></footer>
 </div></body></html>
 <?php
 // Send the buffered body with its validators (see CACHING note above).
