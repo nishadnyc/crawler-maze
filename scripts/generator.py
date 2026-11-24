@@ -176,6 +176,7 @@ def categorize(path):
 def new_group():
     return dict(total=0, clicked=0, direct=0, robots=0, banned=0, bans=0, forms=0,
                 subnets=set(), ips=set(), iphashes=set(), sections=collections.Counter(), hosts=collections.Counter(), hosts_banned=collections.Counter(),
+                topics=collections.Counter(), topic_groups=collections.Counter(), topics_other=0, topic_groups_other=0, topics_backfilled=0,
                 ua="", first=10**12, last=0)
 
 
@@ -222,6 +223,12 @@ def load(logs_dir):
             for fld in ("hosts", "hosts_banned"):
                 if isinstance(g.get(fld), dict):
                     x[fld].update({h: c for h, c in g[fld].items() if isinstance(c, int)})
+            for fld in ("topics", "topic_groups"):
+                if isinstance(g.get(fld), dict):
+                    x[fld].update({t: c for t, c in g[fld].items() if isinstance(c, int)})
+            for fld in ("topics_other", "topic_groups_other", "topics_backfilled"):
+                if isinstance(g.get(fld), int):
+                    x[fld] += g[fld]
             x["ua"] = g.get("user_agent", x["ua"])
             x["first"] = min(x["first"], g.get("first_seen", x["first"]))
             x["last"] = max(x["last"], g.get("last_seen", x["last"]))
@@ -549,6 +556,46 @@ def main():
             L.append(table(["Bot", "Content requests", "Sections", "Top-4 share", "Evenness", "Top sections"],
                            rows, ["l", "r", "r", "r", "r", "l"]))
 
+        # topic focus
+        rows = []
+        for n, g in named_bots:
+            top = {t_: c for t_, c in g["topics"].items() if t_ != "topics_other"}
+            tot_t = sum(top.values())
+            if tot_t < 5:
+                continue
+            top4 = top and sum(c for _, c in collections.Counter(top).most_common(4))
+            rows.append([n, f"{tot_t:,}", len(top), pct(top4, tot_t), f"{entropy_ratio(top.values()):.2f}",
+                         ", ".join(f"{t_} {c:,}" for t_, c in collections.Counter(top).most_common(4))])
+        if rows:
+            note = ("\n**Topic focus.** Counts come from /learn/<group>/<topic> page requests; evenness runs from 0 "
+                    "(one topic only) to 1 (perfectly even). Older logs have no topic data, so this grows as new logs arrive.")
+            bf_total = sum(g["topics_backfilled"] for g in bots.values())
+            if bf_total:
+                note += (f" {bf_total:,} of these counts come from the one-time backfill of old logs' last paths "
+                         "(marked topics_backfilled in the logs).")
+            L.append(note + "\n")
+            L.append(table(["Bot", "Topic requests", "Topics", "Top-4 share", "Evenness", "Top topics"],
+                           rows, ["l", "r", "r", "r", "r", "l"]))
+
+    # --- topic groups (only present in logs written after topic counting was added)
+    tg_total = collections.Counter()
+    tg_bots = collections.defaultdict(collections.Counter)
+    for k, g in groups.items():
+        label = k[4:] if k.startswith("bot:") else "non-bot"
+        for gr, c in g["topic_groups"].items():
+            if gr == "topic_groups_other":
+                continue
+            tg_total[gr] += c
+            tg_bots[gr][label] += c
+    if tg_total:
+        all_tg = sum(tg_total.values())
+        L.append("\n**Topic groups.** Requests by topic group, across all visitors.\n")
+        L.append(table(["Group", "Requests", "Share", "Top bots"],
+                       [[gr, f"{c:,}", pct(c, all_tg),
+                         ", ".join(f"{n} {cc:,}" for n, cc in tg_bots[gr].most_common(2))]
+                        for gr, c in tg_total.most_common()],
+                       ["l", "r", "r", "l"]))
+
     # --- per-domain breakdown (only present in logs written after per-host counting was added)
     host_served = collections.Counter()
     host_banned = collections.Counter()
@@ -621,6 +668,9 @@ def main():
             L.append(f"- **Bans:** {g['bans']:,}; {g['banned']:,} further requests logged while banned")
         if tops:
             L.append(f"- **Top sections:** {tops}")
+        ttops = ", ".join(f"{t} {c:,}" for t, c in g["topics"].most_common(6) if t != "topics_other")
+        if ttops:
+            L.append(f"- **Top topics:** {ttops}")
         L.append(f"- **User agent:** `{g['ua'][:120]}`\n")
 
     # --- owners
