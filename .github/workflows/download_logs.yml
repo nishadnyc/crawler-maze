@@ -21,6 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pages: write # lets the job request a Pages rebuild after pushing
 
     steps:
       - name: Checkout repository
@@ -113,6 +114,7 @@ jobs:
       # log download/sync below is unchanged; only the refresh step is removed.
 
       - name: Commit and push changes
+        id: commit
         run: |
           git config user.name "${{ github.actor }}"
           git config user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
@@ -120,6 +122,18 @@ jobs:
           if ! git diff --staged --quiet; then
             git commit -m "Updated Logs"
             git push origin main
+            echo "pushed=true" >> "$GITHUB_OUTPUT"
           else
             echo "No changes to commit."
           fi
+
+      # Pushes made with GITHUB_TOKEN do not trigger the Pages build on their own, so ask for one.
+      # Never fails the job: if Pages deploys from "GitHub Actions" instead of a branch, this just logs a note.
+      - name: Request GitHub Pages rebuild
+        if: steps.commit.outputs.pushed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -X POST "repos/${{ github.repository }}/pages/builds" \
+            && echo "Pages rebuild requested" \
+            || echo "Pages rebuild request failed (see the job summary for the reason)"
