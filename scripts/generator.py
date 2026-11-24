@@ -641,6 +641,24 @@ def main():
                         for gr, c in tg_total.most_common()],
                        ["l", "r", "r", "l"]))
 
+    # --- robots.txt violations (only present in logs written after violation counting was added)
+    rv_rows = []
+    rv_total = 0
+    for k, g in groups.items():
+        if g["robots_violations"]:
+            label = k[4:] if k.startswith("bot:") else "non-bot"
+            rv_rows.append((label, g["robots_violations"], g["banned"]))
+            rv_total += g["robots_violations"]
+    if rv_rows:
+        rv_rows.sort(key=lambda r: -r[1])
+        L.append("\n**robots.txt violations.** Requests that ignored a Disallow: crawling while banned "
+                 "(a banned visitor's robots.txt says Disallow: / for the ban duration), or fetching "
+                 "/admin/, /cart/ or /api/, which the public robots.txt disallows. The /robots.txt fetch "
+                 "itself never counts. Older logs have no violation data, so this grows as new logs arrive.\n")
+        L.append(table(["Bot", "Violations", "Share", "Banned requests"],
+                       [[n, f"{v:,}", pct(v, rv_total), f"{b:,}"] for n, v, b in rv_rows],
+                       ["l", "r", "r", "r"]))
+
     # --- per-domain breakdown (only present in logs written after per-host counting was added)
     host_served = collections.Counter()
     host_banned = collections.Counter()
