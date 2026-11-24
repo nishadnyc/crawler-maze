@@ -8,6 +8,7 @@ import argparse
 import collections
 import datetime as dt
 import glob
+import html as htmllib
 import ipaddress
 import json
 import os
@@ -290,6 +291,52 @@ def entropy_ratio(counts):
     return h / __import__("math").log2(len(vals))
 
 
+HTML_START = "<!-- REPORT:START -->"
+HTML_END = "<!-- REPORT:END -->"
+
+
+def build_html_block(window, nfiles, tiles, bot_rows, day_cols, day_rows):
+    """Numbers-only HTML for the public page. Names are escaped; no IP addresses are published."""
+    e = htmllib.escape
+    out = ["<h2>All-time, kept current</h2>",
+           f'<p class="sub">Updated automatically from the maze\'s logs · {e(window)} · {nfiles:,} log files</p>',
+           '<div class="totals">']
+    out += [f'<div class="stat"><b>{e(v)}</b><span>{e(lbl)}</span></div>' for v, lbl in tiles]
+    out.append("</div>")
+
+    def tbl(head, rows):
+        th = "".join(f'<th class="{"n" if i else ""}">{e(h)}</th>' for i, h in enumerate(head))
+        tr = "".join("<tr>" + "".join(f'<td class="{"n" if i else ""}">{e(str(c))}</td>' for i, c in enumerate(r)) + "</tr>"
+                     for r in rows)
+        return f'<div class="rtable"><table><thead><tr>{th}</tr></thead><tbody>{tr}</tbody></table></div>'
+
+    out.append('<h3 class="rh">Crawlers</h3>')
+    out.append(tbl(["Crawler", "Served", "During bans", "IPs", "Served / min"], bot_rows))
+    out.append('<h3 class="rh">Recent days</h3>')
+    out.append(tbl(["Day (log file date)", "Hits"] + day_cols, day_rows))
+    return "\n".join(out)
+
+
+def update_html(path, block):
+    """Replace only what sits between the REPORT markers. Missing markers: warn and leave the file alone."""
+    try:
+        text = open(path, encoding="utf-8").read()
+    except OSError as ex:
+        print(f"HTML not updated ({ex})")
+        return
+    i, j = text.find(HTML_START), text.find(HTML_END)
+    if i < 0 or j < i:
+        print(f"HTML not updated: {HTML_START} / {HTML_END} markers not found in {path}")
+        return
+    new = text[:i + len(HTML_START)] + "\n" + block + "\n" + text[j:]
+    if new != text:
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(new)
+        print(f"updated {path}")
+    else:
+        print(f"{path} already up to date")
+
+
 def esc(s):
     return s.replace("|", "\\|")
 
@@ -301,6 +348,7 @@ def main():
     ap.add_argument("--top-ua", type=int, default=15)
     ap.add_argument("--days", type=int, default=30, help="days shown in the daily table (0 = all)")
     ap.add_argument("--daily-csv", default="", help="also write every day to this CSV file")
+    ap.add_argument("--html", default="", help="HTML page containing REPORT:START/END markers to refresh (optional)")
     ap.add_argument("--asn-db", default="", help="path to GeoLite2-ASN.mmdb (optional)")
     ap.add_argument("--ranges-dir", default="", help="folder with vendor range JSON files (optional)")
     args = ap.parse_args()
@@ -570,6 +618,25 @@ def main():
     with open(args.out, "w", encoding="utf-8") as fh:
         fh.write("\n".join(L) + "\n")
     print(f"wrote {args.out}: {total:,} hits, {len(all_ips):,} IPs, {len(subnets)} ranges")
+
+    if args.html:
+        win = f"{U(first)} to {U(last)} UTC"
+        tiles = [(f"{total:,}", "requests served"), (f"{ai_hits:,}", f"from named crawlers ({pct(ai_hits, total)})"),
+                 (f"{len(all_ips):,}", "distinct IPs"), (f"{banned:,}", "requests during bans")]
+        bot_rows = []
+        for n, g in named_bots[:8]:
+            hrs = (g["last"] - g["first"]) / 3600
+            bot_rows.append([n, f"{g['total']:,}", f"{g['banned']:,}", f"{len(extra['seen'].get('bot:' + n, {})):,}",
+                             f"{g['total'] / hrs / 60:.1f}" if hrs >= 0.1 else "-"])
+        recent = [d for d in days if d != "unknown"][:7]
+        dcols = named + ["other"]
+        day_rows = []
+        for dk in recent:
+            dd = daily[dk]
+            vals = [dd["by"].get(n, 0) for n in named]
+            vals.append(dd["total"] - sum(vals))
+            day_rows.append([dk, f"{dd['total']:,}"] + [f"{v:,}" for v in vals])
+        update_html(args.html, build_html_block(win, nfiles, tiles, bot_rows, dcols, day_rows))
 
 
 if __name__ == "__main__":

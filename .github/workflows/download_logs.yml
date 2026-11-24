@@ -104,7 +104,8 @@ jobs:
       - name: Generate report
         run: |
           python scripts/generator.py --logs logs --out "$OUT_FILE" \
-            --asn-db "$GEO_DIR/asn/GeoLite2-ASN.mmdb" --ranges-dir "$GEO_DIR/ranges"
+            --asn-db "$GEO_DIR/asn/GeoLite2-ASN.mmdb" --ranges-dir "$GEO_DIR/ranges" \
+            --html docs/index.html
 
       # Stats refresh DISABLED 2026-11-22 (issue #21): refresh_stats.py used to
       # run here on every sync and regenerated the README/Pages stats from a
