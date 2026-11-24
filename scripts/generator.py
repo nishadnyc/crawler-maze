@@ -349,6 +349,21 @@ def build_html_block(info):
         chips = "".join(f'<span class="chip">{e(n)} <b>{c:,}</b></span>' for n, c in info["chips"])
         out.append(f'<div class="looking"><h3>What they were looking for</h3><div class="chips">{chips}</div></div>')
 
+    def rtable(headers, rows, numeric):
+        th = "".join(f'<th class="{"n" if i in numeric else ""}">{e(h)}</th>' for i, h in enumerate(headers))
+        tr = "".join("<tr>" + "".join(f'<td class="{"n" if i in numeric else ""}">{e(str(c))}</td>' for i, c in enumerate(r_)) + "</tr>"
+                     for r_ in rows)
+        return f'<div class="rtable"><table><thead><tr>{th}</tr></thead><tbody>{tr}</tbody></table></div>'
+
+    if info["topic_focus"]:
+        out.append('<h3 class="rh">Topic focus</h3>')
+        out.append(f'<p class="detail" style="color:#9fb3c8;font-size:.9rem;margin:12px 0 0;">{e(info["topic_note"])}</p>')
+        out.append(rtable(["Bot", "Topic requests", "Topics", "Top-4 share", "Evenness", "Top topics"],
+                          info["topic_focus"], {1, 2, 3, 4}))
+    if info["topic_groups"]:
+        out.append('<h3 class="rh">Topic groups</h3>')
+        out.append(rtable(["Group", "Requests", "Share", "Top bots"], info["topic_groups"], {1, 2}))
+
     th = "".join(f'<th class="{"n" if i else ""}">{e(h)}</th>' for i, h in enumerate(["Day (log file date)", "Hits"] + info["day_cols"]))
     tr = "".join("<tr>" + "".join(f'<td class="{"n" if i else ""}">{e(str(c))}</td>' for i, c in enumerate(r_)) + "</tr>"
                  for r_ in info["day_rows"])
@@ -793,9 +808,33 @@ def main():
             vals = [dd["by"].get(n, 0) for n in named]
             vals.append(dd["total"] - sum(vals))
             day_rows.append([dk, f"{dd['total']:,}"] + [f"{v:,}" for v in vals])
+        topic_focus_rows = []
+        for n, g in named_bots:
+            top = {t_: c for t_, c in g["topics"].items() if t_ != "topics_other"}
+            tot_t = sum(top.values())
+            if tot_t < 5:
+                continue
+            top4 = top and sum(c for _, c in collections.Counter(top).most_common(4))
+            topic_focus_rows.append([n, f"{tot_t:,}", len(top), pct(top4, tot_t), f"{entropy_ratio(top.values()):.2f}",
+                                     ", ".join(f"{t_} {c:,}" for t_, c in collections.Counter(top).most_common(4))])
+        topic_note = ""
+        if topic_focus_rows:
+            topic_note = ("Counts come from /learn/<group>/<topic> page requests; evenness runs from 0 "
+                          "(one topic only) to 1 (perfectly even). Older logs have no topic data, so this grows as new logs arrive.")
+            bf_total = sum(g["topics_backfilled"] for g in bots.values())
+            if bf_total:
+                topic_note += (f" {bf_total:,} of these counts come from the one-time backfill of old logs' last paths "
+                               "(marked topics_backfilled in the logs).")
+        topic_group_rows = []
+        if tg_total:
+            all_tg = sum(tg_total.values())
+            topic_group_rows = [[gr, f"{c:,}", pct(c, all_tg),
+                                 ", ".join(f"{n} {cc:,}" for n, cc in tg_bots[gr].most_common(2))]
+                                for gr, c in tg_total.most_common()]
         update_html(args.html, build_html_block(dict(
             window=f"{U(first)} to {U(last)} UTC", nfiles=nfiles, tiles=tiles, bots=bots_info, others=others_info,
             chips=sorted(secs.items(), key=lambda kv: (-kv[1], kv[0]))[:6], day_cols=dcols, day_rows=day_rows,
+            topic_focus=topic_focus_rows, topic_note=topic_note, topic_groups=topic_group_rows,
             forms=sum(g["forms"] for g in groups.values()))))
 
 
