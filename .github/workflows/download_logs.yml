@@ -29,7 +29,7 @@ jobs:
         with:
           ref: main
 
-      - name: Set scratch dir (outside the repo so `git add .` never picks it up)
+      - name: Set scratch dir (outside the repo so the sync never picks it up)
         run: echo "GEO_DIR=$RUNNER_TEMP/geo" >> "$GITHUB_ENV"
 
       - name: Setup SSH
@@ -42,7 +42,7 @@ jobs:
       - name: Download files from server
         run: |
           ssh "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" \
-            "sudo tar -czf - -C ${{ secrets.SERVER_PATH }} ." \
+            "sudo tar -czf - -C ${{ secrets.SERVER_PATH }} ./logs ./.maze-bans.json ./.maze-domain.json" \
             | tar -xzf - -C .
 
       # ---- Report generation (runs after logs are synced, before the commit) ----
@@ -118,7 +118,7 @@ jobs:
         run: |
           git config user.name "${{ github.actor }}"
           git config user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
-          git add .
+          git add logs .maze-bans.json .maze-domain.json README.md docs/index.html
           if ! git diff --staged --quiet; then
             git commit -m "Updated Logs"
             git push origin main
