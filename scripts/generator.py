@@ -241,6 +241,30 @@ def load(logs_dir):
             day["by"][key[4:] if key.startswith("bot:") else "non-bot"] += g.get("total", 0)
             subnets[sn]["total"] += g.get("total", 0)
             subnets[sn]["banned"] += g.get("banned_hits", 0)
+        # Pruned groups: when the maze prunes a group idle for 2+ hours it
+        # folds the group's counters into the file's pruned_groups map so
+        # nothing is lost. Add those aggregates back into the same per-bot
+        # totals (files written before the queue fix have no such key).
+        for key, pg in (d.get("pruned_groups") or {}).items():
+            if not isinstance(pg, dict):
+                continue
+            x = groups[key]
+            for k, srcf in (("total", "total"), ("clicked", "clicked"), ("direct", "direct"),
+                            ("robots", "robots"), ("banned", "banned_hits"), ("bans", "ban_count")):
+                if isinstance(pg.get(srcf), int):
+                    x[k] += pg[srcf]
+            x["forms"] += pg.get("form_submissions", 0) if isinstance(pg.get("form_submissions"), int) else 0
+            x["subnets"].add(sn)
+            for fld in ("hosts", "hosts_banned", "topics", "topic_groups"):
+                if isinstance(pg.get(fld), dict):
+                    x[fld].update({h: c for h, c in pg[fld].items() if isinstance(c, int)})
+            if isinstance(pg.get("sections"), dict):
+                x["sections"].update(pg["sections"])
+            day["total"] += pg.get("total", 0) if isinstance(pg.get("total"), int) else 0
+            day["banned"] += pg.get("banned_hits", 0) if isinstance(pg.get("banned_hits"), int) else 0
+            day["by"][key[4:] if key.startswith("bot:") else "non-bot"] += pg.get("total", 0) if isinstance(pg.get("total"), int) else 0
+            subnets[sn]["total"] += pg.get("total", 0) if isinstance(pg.get("total"), int) else 0
+            subnets[sn]["banned"] += pg.get("banned_hits", 0) if isinstance(pg.get("banned_hits"), int) else 0
     for a, ips in botips.items():
         groups[a]["ips"] |= ips
     return groups, subnets, all_ips, hosts, ban_entries, len(files), daily, extra

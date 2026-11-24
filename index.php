@@ -715,6 +715,304 @@ if ($vidCookie !== '') {
 $groupSubnet = $cookieGroupSubnet !== '' ? $cookieGroupSubnet : $visitorSubnet;
 $groupKey = 'group:' . $groupSubnet;
 // ---------------------------------------------------------------------------
+// SECTION 4b - Append-only log QUEUE (log-every-request fix)
+// Every request that reaches the logging stage FIRST appends one JSON line
+// to logs/queue-<YYYY-MM-DD>.log (America/New_York date). Appending is the
+// only per-request log action: it uses a BLOCKING exclusive lock, so a hit
+// is never dropped just because another hit is being written - it waits
+// its turn (appends are a few hundred bytes, so the wait is minimal). The
+// queued line is then folded into the daily per-subnet JSON files by
+// mazeDrainLogQueue(), either opportunistically by a later request or by
+// cron:  php index.php --drain-log-queue   (run every minute; drains fully
+// and exits before any page logic). Queue files live in logs/, which has a
+// deny-all .htaccess, so they are never web-accessible.
+// Exactly-once: a drain renames the queue to a .processing file under the
+// append lock (new appends start a fresh queue), applies its lines, and
+// each daily file remembers the queue ids it has applied
+// (applied_queue_ids), so a crash mid-drain never double-counts on retry.
+// ---------------------------------------------------------------------------
+function mazeLogsDir(): ?string {
+    $logsDir = __DIR__ . '/logs';
+    if (!is_dir($logsDir)) @mkdir($logsDir, 0775, true);
+    if (!is_dir($logsDir)) return null;
+    $logsHtaccess = $logsDir . '/.htaccess';
+    if (!is_file($logsHtaccess)) @file_put_contents($logsHtaccess, "Require all denied\nDeny from all\n");
+    return $logsDir;
+}
+// Append ONE hit line to today's queue. Returns true when the line is
+// durably queued. The append lock is held only for the open+write+close,
+// so drains can rename the queue file safely between appends.
+function mazeQueueAppend(array $hit): bool {
+    $logsDir = mazeLogsDir();
+    if ($logsDir === null) return false;
+    $lockF = @fopen($logsDir . '/.queue-append.lock', 'c');
+    if (!$lockF) return false;
+    if (!flock($lockF, LOCK_EX)) { fclose($lockF); return false; }
+    $ok = false;
+    $qf = @fopen($logsDir . '/queue-' . $hit['day'] . '.log', 'a');
+    if ($qf) {
+        $line = json_encode($hit);
+        if ($line !== false) $ok = fwrite($qf, $line . "\n") !== false && fflush($qf);
+        fclose($qf);
+    }
+    flock($lockF, LOCK_UN);
+    fclose($lockF);
+    return $ok;
+}
+// Fold a pruned (idle >= 2h) group's accumulated counters into the daily
+// file's pruned_groups map, so its totals SURVIVE pruning and the report
+// generator can still recover them. Nothing is lost any more.
+function mazeFoldPrunedGroup(array &$data, string $agentKey, array $grp): void {
+    if (!isset($data['pruned_groups']) || !is_array($data['pruned_groups'])) $data['pruned_groups'] = [];
+    if (!isset($data['pruned_groups'][$agentKey]) || !is_array($data['pruned_groups'][$agentKey])) {
+        $data['pruned_groups'][$agentKey] = ['total' => 0, 'banned_hits' => 0, 'clicked' => 0, 'direct' => 0, 'robots' => 0,
+            'form_submissions' => 0, 'form_submissions_blocked' => 0, 'ban_count' => 0,
+            'sections' => [], 'hosts' => [], 'hosts_banned' => [], 'topics' => [], 'topic_groups' => []];
+    }
+    $pg = &$data['pruned_groups'][$agentKey];
+    foreach (['total', 'banned_hits', 'clicked', 'direct', 'robots', 'form_submissions', 'form_submissions_blocked', 'ban_count'] as $k) {
+        $pg[$k] = (int)($pg[$k] ?? 0) + (int)($grp[$k] ?? 0);
+    }
+    foreach (['sections', 'hosts', 'hosts_banned', 'topics', 'topic_groups'] as $k) {
+        if (isset($grp[$k]) && is_array($grp[$k])) {
+            foreach ($grp[$k] as $kk => $vv) $pg[$k][$kk] = (int)($pg[$k][$kk] ?? 0) + (int)$vv;
+        }
+    }
+    unset($pg);
+}
+// Apply ONE queued hit to a daily subnet file's data, replicating exactly
+// what the old direct write did for that hit (counters, group stats,
+// topics, honeypot first-5 rule, window counts, >2000/hour ban decision),
+// plus the persistent per-day totals section. Banned hits only bump
+// banned_hits / hosts_banned / totals, as the old early path did - except
+// the group entry is now created when missing, so a banned hit is never
+// lost just because the group had no normal hit yet today.
+// Returns per-hit results: form_accepted, form_count, new_ban, global_bans.
+function mazeApplyQueuedHit(array &$data, array $hit, int $banSeconds): array {
+    $nowTs = (int)$hit['ts'];
+    $agentKey = (string)$hit['agent'];
+    $visitorIp = (string)$hit['ip'];
+    $visitorUa = (string)$hit['ua'];
+    $visitorSubnet = (string)($hit['visitor_subnet'] ?? $hit['subnet']);
+    $groupSubnet = (string)$hit['subnet'];
+    $host = (string)$hit['host'];
+    $requestPath = (string)$hit['path'];
+    $res = ['form_accepted' => false, 'form_count' => null, 'new_ban' => false, 'global_bans' => []];
+    if (!isset($data['ips']) || !is_array($data['ips'])) $data['ips'] = [];
+    if (!isset($data['agents']) || !is_array($data['agents'])) $data['agents'] = [];
+    if (!isset($data['groups']) || !is_array($data['groups'])) $data['groups'] = [];
+    if (!isset($data['totals']) || !is_array($data['totals'])) $data['totals'] = [];
+    if (!isset($data['totals'][$agentKey]) || !is_array($data['totals'][$agentKey])) $data['totals'][$agentKey] = ['hits' => 0, 'banned_hits' => 0];
+    $data['totals'][$agentKey]['hits'] = (int)($data['totals'][$agentKey]['hits'] ?? 0) + 1;
+    $data['subnet'] = $groupSubnet;
+    if (!isset($data['groups'][$agentKey]) || !is_array($data['groups'][$agentKey])) $data['groups'][$agentKey] = ['first_seen' => $nowTs, 'last_seen' => $nowTs, 'total' => 0, 'unique_ips' => 0, 'ip_hashes' => [], 'clicked' => 0, 'direct' => 0, 'robots' => 0, 'banned_hits' => 0, 'sections' => [], 'last_host' => '', 'last_path' => '', 'user_agent' => $visitorUa, 'user_agents' => [$visitorUa]];
+    if (!empty($hit['banned'])) {
+        $data['totals'][$agentKey]['banned_hits'] = (int)($data['totals'][$agentKey]['banned_hits'] ?? 0) + 1;
+        $grp = &$data['groups'][$agentKey];
+        $grp['banned_hits'] = (int)($grp['banned_hits'] ?? 0) + 1;
+        $grp['last_banned_hit'] = $nowTs;
+        bumpHostCount($grp, 'hosts_banned', $host);
+        unset($grp);
+        return $res;
+    }
+    if ($visitorSubnet !== $groupSubnet) { if (!isset($data['alias_subnets']) || !is_array($data['alias_subnets'])) $data['alias_subnets'] = []; $data['alias_subnets'][$visitorSubnet] = (int)($data['alias_subnets'][$visitorSubnet] ?? 0) + 1; }
+    if (!isset($data['first_seen'])) $data['first_seen'] = $nowTs;
+    $data['last_seen'] = max((int)($data['last_seen'] ?? 0), $nowTs);
+    if (!isset($data['window_start']) || $nowTs - (int)$data['window_start'] >= 3600) { $data['window_start'] = $nowTs; $data['count'] = 1; }
+    else $data['count'] = (int)($data['count'] ?? 0) + 1;
+    $subnetCount = (int)$data['count'];
+    $bump = function (array &$bucket, string $key, array $extra) use ($nowTs): int {
+        if (!isset($bucket[$key]) || !is_array($bucket[$key])) { $bucket[$key] = array_merge(['first_seen' => $nowTs, 'window_start' => $nowTs, 'count' => 1, 'last_seen' => $nowTs], $extra); return 1; }
+        $bucket[$key]['last_seen'] = max((int)($bucket[$key]['last_seen'] ?? 0), $nowTs);
+        if (!isset($bucket[$key]['first_seen'])) $bucket[$key]['first_seen'] = $nowTs;
+        if ($nowTs - (int)($bucket[$key]['window_start'] ?? $nowTs) >= 3600) { $bucket[$key]['window_start'] = $nowTs; $bucket[$key]['count'] = 1; }
+        else $bucket[$key]['count'] = (int)($bucket[$key]['count'] ?? 0) + 1;
+        return (int)$bucket[$key]['count'];
+    };
+    $ipCount = $bump($data['ips'], $visitorIp, ['agent' => $agentKey]);
+    $agentCount = $bump($data['agents'], $agentKey, ['user_agent' => $visitorUa]);
+    if (isset($data['agents'][$agentKey]) && is_array($data['agents'][$agentKey])) {
+        if (!isset($data['agents'][$agentKey]['user_agents']) || !is_array($data['agents'][$agentKey]['user_agents'])) $data['agents'][$agentKey]['user_agents'] = array_values(array_unique([(string)($data['agents'][$agentKey]['user_agent'] ?? $visitorUa)]));
+        if (!in_array($visitorUa, $data['agents'][$agentKey]['user_agents'], true) && count($data['agents'][$agentKey]['user_agents']) < 5) $data['agents'][$agentKey]['user_agents'][] = $visitorUa;
+        $data['agents'][$agentKey]['user_agent'] = $visitorUa;
+    }
+    $grp = &$data['groups'][$agentKey];
+    if (!isset($grp['user_agents']) || !is_array($grp['user_agents'])) $grp['user_agents'] = [(string)($grp['user_agent'] ?? $visitorUa)];
+    if (!in_array($visitorUa, $grp['user_agents'], true) && count($grp['user_agents']) < 5) $grp['user_agents'][] = $visitorUa;
+    $grp['user_agent'] = $visitorUa;
+    $grp['last_seen'] = max((int)($grp['last_seen'] ?? 0), $nowTs);
+    $grp['total'] = (int)($grp['total'] ?? 0) + 1;
+    $ipHash = substr(md5($visitorIp), 0, 10);
+    if (!isset($grp['ip_hashes']) || !is_array($grp['ip_hashes'])) $grp['ip_hashes'] = [];
+    if (!isset($grp['ip_hashes'][$ipHash]) && count($grp['ip_hashes']) < 200) { $grp['ip_hashes'][$ipHash] = 1; $grp['unique_ips'] = count($grp['ip_hashes']); }
+    if (!empty($hit['clicked'])) $grp['clicked'] = (int)($grp['clicked'] ?? 0) + 1; else $grp['direct'] = (int)($grp['direct'] ?? 0) + 1;
+    if ($requestPath === '/robots.txt') $grp['robots'] = (int)($grp['robots'] ?? 0) + 1;
+    $seg = explode('/', trim($requestPath, '/'))[0];
+    if (!isset($grp['sections']) || !is_array($grp['sections'])) $grp['sections'] = [];
+    if ($seg !== '' && strlen($seg) <= 40 && count($grp['sections']) < 50) $grp['sections'][$seg] = (int)($grp['sections'][$seg] ?? 0) + 1;
+    $grp['last_host'] = $host;
+    bumpHostCount($grp, 'hosts', $host);
+    $grp['last_path'] = substr($requestPath, 0, 120);
+    $catTopicHit = mazeTopicFromPath($requestPath);
+    if ($catTopicHit !== null) { bumpCatalogCount($grp, 'topics', $catTopicHit['slug'], 100); bumpCatalogCount($grp, 'topic_groups', $catTopicHit['group'], 20); }
+    $formCount = (int)($grp['form_submissions'] ?? 0);
+    if (isset($hit['form']) && is_array($hit['form'])) {
+        if ($formCount < 5) {
+            $grp['form_submissions'] = $formCount + 1; $formCount++;
+            $res['form_accepted'] = true;
+            if (!isset($grp['form_posts']) || !is_array($grp['form_posts'])) $grp['form_posts'] = [];
+            $grp['form_posts'][] = ['ts' => $nowTs, 'host' => $host, 'path' => substr($requestPath, 0, 120), 'data' => $hit['form']];
+        } else { $grp['form_submissions_blocked'] = (int)($grp['form_submissions_blocked'] ?? 0) + 1; }
+    }
+    $res['form_count'] = $formCount;
+    unset($grp);
+    // Housekeeping with the prune fix: idle entries may still be dropped
+    // to keep the file small, but a GROUP's accumulated counters are first
+    // folded into pruned_groups (see mazeFoldPrunedGroup) - totals are
+    // never lost any more, and the persistent totals section above only
+    // ever increases.
+    $pruneNow = max(time(), $nowTs);
+    foreach (['ips', 'agents'] as $bk) { foreach ($data[$bk] as $k => $v) { if ($pruneNow - (int)($v['last_seen'] ?? $pruneNow) >= 7200) unset($data[$bk][$k]); } }
+    foreach ($data['groups'] as $k => $v) { if ($pruneNow - (int)($v['last_seen'] ?? $pruneNow) >= 7200) { mazeFoldPrunedGroup($data, (string)$k, $v); unset($data['groups'][$k]); } }
+    if ($ipCount > 2000 || $subnetCount > 2000) {
+        $res['new_ban'] = true;
+        if (!isset($data['bans']) || !is_array($data['bans'])) $data['bans'] = [];
+        $banKeys = ['ip:' . $visitorIp, 'subnet:' . $groupSubnet, 'group:' . $groupSubnet];
+        foreach ($banKeys as $bk) { $data['bans'][$bk] = ['since' => $nowTs, 'until' => $nowTs + $banSeconds, 'user_agent' => $visitorUa]; $res['global_bans'][$bk] = $data['bans'][$bk]; }
+        if (isset($data['groups'][$agentKey]) && is_array($data['groups'][$agentKey])) {
+            $data['groups'][$agentKey]['ban_count'] = (int)($data['groups'][$agentKey]['ban_count'] ?? 0) + 1;
+            $data['groups'][$agentKey]['last_ban'] = ['since' => $nowTs, 'until' => $nowTs + $banSeconds];
+        }
+    }
+    return $res;
+}
+// Merge drain-decided bans into the global .maze-bans.json (blocking lock,
+// expired entries pruned) - the same merge the old in-request path did.
+function mazeMergeGlobalBans(array $newBans, int $nowTs): void {
+    if (!$newBans) return;
+    $banFile = __DIR__ . '/.maze-bans.json';
+    $bf2 = @fopen($banFile, 'c+');
+    if ($bf2) {
+        if (flock($bf2, LOCK_EX)) {
+            $braw2 = stream_get_contents($bf2);
+            $bans2 = $braw2 ? json_decode($braw2, true) : null;
+            if (!is_array($bans2)) $bans2 = [];
+            foreach ($bans2 as $k2 => $v2) { if ((int)($v2['until'] ?? 0) <= $nowTs) unset($bans2[$k2]); }
+            foreach ($newBans as $bk => $bv) $bans2[$bk] = $bv;
+            rewind($bf2); ftruncate($bf2, 0); fwrite($bf2, json_encode($bans2)); fflush($bf2);
+            flock($bf2, LOCK_UN);
+        }
+        fclose($bf2);
+    }
+}
+// Drain the queue into the daily subnet JSON files. $maxLines bounds the
+// work per call (0 = unlimited, used by the CLI/cron entry). $results is
+// filled with per-hit results keyed by queue id for hits applied in THIS
+// call. Returns the number of hits applied, or -1 when another drainer
+// holds the drain lock and $blocking is false.
+function mazeDrainLogQueue(int $maxLines, array &$results, bool $blocking): int {
+    $logsDir = mazeLogsDir();
+    if ($logsDir === null) return 0;
+    $lockF = @fopen($logsDir . '/.drain.lock', 'c');
+    if (!$lockF) return 0;
+    if (!flock($lockF, $blocking ? LOCK_EX : (LOCK_EX | LOCK_NB))) { fclose($lockF); return -1; }
+    $processed = 0;
+    $globalBans = [];
+    $candidates = array_merge(glob($logsDir . '/queue-*.log.processing-*') ?: [], glob($logsDir . '/queue-*.log') ?: []);
+    usort($candidates, fn($a, $b) => (filemtime($a) ?: 0) <=> (filemtime($b) ?: 0));
+    foreach ($candidates as $cand) {
+        if ($maxLines > 0 && $processed >= $maxLines) break;
+        $procFile = $cand;
+        if (!str_contains($cand, '.processing-')) {
+            // Rotate the live queue aside under the append lock so no
+            // appender has the file open while it is renamed; appends
+            // after this point start a fresh queue file.
+            $af = @fopen($logsDir . '/.queue-append.lock', 'c');
+            if ($af) flock($af, LOCK_EX);
+            $procFile = $cand . '.processing-' . getmypid() . '-' . bin2hex(random_bytes(3));
+            if (!@rename($cand, $procFile)) { if ($af) { flock($af, LOCK_UN); fclose($af); } continue; }
+            if ($af) { flock($af, LOCK_UN); fclose($af); }
+        }
+        $lines = @file($procFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        if ($lines === false) { @unlink($procFile); continue; }
+        $batch = $lines; $leftover = [];
+        if ($maxLines > 0 && $processed + count($lines) > $maxLines) {
+            $take = max(0, $maxLines - $processed);
+            $batch = array_slice($lines, 0, $take);
+            $leftover = array_slice($lines, $take);
+        }
+        // Group the batch by target daily file, preserving queue order.
+        $byFile = [];
+        foreach ($batch as $line) {
+            $hit = json_decode($line, true);
+            if (!is_array($hit) || !isset($hit['subnet'], $hit['day'], $hit['id'])) continue;
+            $fname = str_replace(['/', ':', '*'], '_', (string)$hit['subnet']) . '_' . (string)$hit['day'] . '.json';
+            $byFile[$fname][] = $hit;
+        }
+        foreach ($byFile as $fname => $hits) {
+            $sf = @fopen($logsDir . '/' . $fname, 'c+');
+            if (!$sf) continue;
+            if (flock($sf, LOCK_EX)) {
+                $raw = stream_get_contents($sf);
+                $data = $raw ? json_decode($raw, true) : null;
+                if (!is_array($data)) $data = [];
+                if (!isset($data['applied_queue_ids']) || !is_array($data['applied_queue_ids'])) $data['applied_queue_ids'] = [];
+                foreach ($hits as $hit) {
+                    $hid = (string)$hit['id'];
+                    if (isset($data['applied_queue_ids'][$hid])) { $results[$hid] = ['duplicate' => true]; continue; }
+                    $r = mazeApplyQueuedHit($data, $hit, 600);
+                    $data['applied_queue_ids'][$hid] = 1;
+                    $results[$hid] = $r;
+                    foreach ($r['global_bans'] as $bk => $bv) $globalBans[$bk] = $bv;
+                    $processed++;
+                }
+                if (count($data['applied_queue_ids']) > 8000) $data['applied_queue_ids'] = array_slice($data['applied_queue_ids'], -8000, null, true);
+                rewind($sf); ftruncate($sf, 0); fwrite($sf, json_encode($data)); fflush($sf);
+                flock($sf, LOCK_UN);
+            }
+            fclose($sf);
+        }
+        if ($leftover) {
+            // Bounded drain: put unprocessed lines back on the live queue
+            // (under the append lock) so a later drain picks them up.
+            $day = null;
+            foreach ($leftover as $line) { $h = json_decode($line, true); if (is_array($h) && isset($h['day'])) { $day = (string)$h['day']; break; } }
+            if ($day !== null) {
+                $af = @fopen($logsDir . '/.queue-append.lock', 'c');
+                if ($af) flock($af, LOCK_EX);
+                $qf = @fopen($logsDir . '/queue-' . $day . '.log', 'a');
+                if ($qf) { foreach ($leftover as $line) fwrite($qf, $line . "\n"); fflush($qf); fclose($qf); }
+                if ($af) { flock($af, LOCK_UN); fclose($af); }
+            }
+        }
+        @unlink($procFile);
+    }
+    if ($globalBans) mazeMergeGlobalBans($globalBans, time());
+    flock($lockF, LOCK_UN);
+    fclose($lockF);
+    return $processed;
+}
+// In-request drain driver: try the non-blocking opportunistic drain first;
+// if another request is draining, wait for it once (its work is bounded),
+// then drain again so THIS request's hit is applied before we answer
+// whenever possible. $results accumulates per-hit results by queue id.
+function mazeDrainForRequest(string $wantId, array &$results): void {
+    for ($i = 0; $i < 4 && !isset($results[$wantId]); $i++) {
+        $r = mazeDrainLogQueue(500, $results, false);
+        if ($r === -1) { mazeDrainLogQueue(500, $results, true); }
+        elseif ($r === 0) break;
+    }
+}
+// CLI/cron entry: `php index.php --drain-log-queue` drains the whole queue
+// and exits before any page logic. Suggested cron: every minute.
+if (PHP_SAPI === 'cli' && in_array('--drain-log-queue', $GLOBALS['argv'] ?? [], true)) {
+    $cliResults = [];
+    $n = mazeDrainLogQueue(0, $cliResults, true);
+    echo 'drained ' . $n . " queued hit(s)\n";
+    exit(0);
+}
+
+// ---------------------------------------------------------------------------
 // SECTION 5 - Bans: check first, enforce fast
 // $trackingFile is a legacy leftover (the old single-file tracker); the live
 // system uses .maze-bans.json (global, tiny, checked on every request) plus
@@ -763,6 +1061,20 @@ if ($shouldBlock) {
         }
         fclose($bf3);
     }
+    // Queue the banned hit FIRST (banned=true): the append is blocking,
+    // creates the queue file if needed, and cannot be skipped just
+    // because the log is busy - that was the old banned-hit loss. The
+    // drain folds it into banned_hits. Only if the append itself fails
+    // do we fall back to the old best-effort direct bump below.
+    $bannedHit = ['id' => $nowTs . '-' . bin2hex(random_bytes(6)), 'ts' => $nowTs, 'day' => $todayStr,
+        'ip' => $visitorIp, 'visitor_subnet' => $visitorSubnet, 'subnet' => $groupSubnet, 'agent' => $agentKey,
+        'ua' => $visitorUa, 'host' => $host, 'path' => substr($requestPath, 0, 120), 'method' => (string)($_SERVER['REQUEST_METHOD'] ?? 'GET'),
+        'clicked' => false, 'referer' => ((string)($_SERVER['HTTP_REFERER'] ?? '')) !== '', 'robots' => $requestPath === '/robots.txt',
+        'banned' => true, 'form' => null];
+    if (mazeQueueAppend($bannedHit)) {
+        $bannedResults = [];
+        mazeDrainForRequest($bannedHit['id'], $bannedResults);
+    } else {
     $groupFileEarly = __DIR__ . '/logs/' . str_replace(['/', ':', '*'], '_', $groupSubnet) . '_' . $todayStr . '.json';
     if (is_file($groupFileEarly)) {
         $gf = @fopen($groupFileEarly, 'c+');
@@ -780,6 +1092,7 @@ if ($shouldBlock) {
             }
             fclose($gf);
         }
+    }
     }
     sleep(5);
     http_response_code(429);
@@ -805,6 +1118,34 @@ if ($shouldBlock) {
 $showHiddenForm = true;
 $loginSuccess = false;
 if (!empty($_COOKIE['sid']) || !empty($_COOKIE['maze_session'])) $showHiddenForm = false;
+// QUEUE FIRST (Section 4b): append this hit to the log queue, then drain
+// opportunistically so it lands in the daily JSON before we answer. Only
+// when the append itself fails do we fall back to the legacy direct write
+// in the else block below - a hit is never silently dropped.
+$hitForm = null;
+if ((($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') && isset($_POST['login_form'])) {
+    $hitForm = [];
+    foreach (['email', 'username', 'password'] as $fn) { if (isset($_POST[$fn])) $hitForm[$fn] = substr(trim((string)$_POST[$fn]), 0, 120); }
+}
+$refererHdr = (string)($_SERVER['HTTP_REFERER'] ?? '');
+$queuedHit = ['id' => $nowTs . '-' . bin2hex(random_bytes(6)), 'ts' => $nowTs, 'day' => $todayStr,
+    'ip' => $visitorIp, 'visitor_subnet' => $visitorSubnet, 'subnet' => $groupSubnet, 'agent' => $agentKey,
+    'ua' => $visitorUa, 'host' => $host, 'path' => substr($requestPath, 0, 120), 'method' => (string)($_SERVER['REQUEST_METHOD'] ?? 'GET'),
+    'clicked' => $refererHdr !== '' && str_contains($refererHdr, $baseDomain), 'referer' => $refererHdr !== '',
+    'robots' => $requestPath === '/robots.txt', 'banned' => false, 'form' => $hitForm];
+$queuedOk = mazeQueueAppend($queuedHit);
+if ($queuedOk) {
+    $drainResults = [];
+    mazeDrainForRequest($queuedHit['id'], $drainResults);
+    $myRes = $drainResults[$queuedHit['id']] ?? null;
+    if (is_array($myRes)) {
+        if (!empty($myRes['form_accepted'])) {
+            $sessTok = bin2hex(random_bytes(16)); setcookie('sid', $sessTok, time() + 2592000, '/'); $loginSuccess = true;
+        }
+        if (($myRes['form_count'] ?? null) !== null) $showHiddenForm = ($myRes['form_count'] < 5) && empty($_COOKIE['sid']) && empty($_COOKIE['maze_session']);
+        if (!empty($myRes['new_ban'])) $shouldBlock = true;
+    }
+} else {
 $logsDir = __DIR__ . '/logs';
 if (!is_dir($logsDir)) @mkdir($logsDir, 0775, true);
 $logsHtaccess = $logsDir . '/.htaccess';
@@ -843,6 +1184,9 @@ if ($sf) {
         }
         if (!isset($data['groups'][$agentKey]) || !is_array($data['groups'][$agentKey])) $data['groups'][$agentKey] = ['first_seen' => $nowTs, 'last_seen' => $nowTs, 'total' => 0, 'unique_ips' => 0, 'ip_hashes' => [], 'clicked' => 0, 'direct' => 0, 'robots' => 0, 'banned_hits' => 0, 'sections' => [], 'last_host' => '', 'last_path' => '', 'user_agent' => $visitorUa, 'user_agents' => [$visitorUa]];
         $grp = &$data['groups'][$agentKey];
+        if (!isset($data['totals']) || !is_array($data['totals'])) $data['totals'] = [];
+        if (!isset($data['totals'][$agentKey]) || !is_array($data['totals'][$agentKey])) $data['totals'][$agentKey] = ['hits' => 0, 'banned_hits' => 0];
+        $data['totals'][$agentKey]['hits'] = (int)($data['totals'][$agentKey]['hits'] ?? 0) + 1;
         if (!isset($grp['user_agents']) || !is_array($grp['user_agents'])) $grp['user_agents'] = [(string)($grp['user_agent'] ?? $visitorUa)];
         if (!in_array($visitorUa, $grp['user_agents'], true) && count($grp['user_agents']) < 5) $grp['user_agents'][] = $visitorUa;
         $grp['user_agent'] = $visitorUa;
@@ -884,7 +1228,8 @@ if ($sf) {
         // file stays small, then apply the rate limit: more than 2000 hits in
         // the current 1-hour window from this IP or this first-seen
         // GROUP triggers a 10-minute ban for the IP and the group keys.
-        foreach (['ips', 'agents', 'groups'] as $bk) { foreach ($data[$bk] as $k => $v) { if ($nowTs - (int)($v['last_seen'] ?? $nowTs) >= 7200) unset($data[$bk][$k]); } }
+        foreach (['ips', 'agents'] as $bk) { foreach ($data[$bk] as $k => $v) { if ($nowTs - (int)($v['last_seen'] ?? $nowTs) >= 7200) unset($data[$bk][$k]); } }
+        foreach ($data['groups'] as $k => $v) { if ($nowTs - (int)($v['last_seen'] ?? $nowTs) >= 7200) { mazeFoldPrunedGroup($data, (string)$k, $v); unset($data['groups'][$k]); } }
         if ($ipCount > 2000 || $subnetCount > 2000) $shouldBlock = true;
         if ($shouldBlock) {
             if (!isset($data['bans']) || !is_array($data['bans'])) $data['bans'] = [];
@@ -899,6 +1244,7 @@ if ($sf) {
         flock($sf, LOCK_UN);
     }
     fclose($sf);
+}
 }
 if ($shouldBlock) {
 // A new ban was decided inside the log block: merge it into the global
