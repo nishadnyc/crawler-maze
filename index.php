@@ -75,14 +75,6 @@ function srand2(string $seed): void { mt_srand((int)(hexdec(substr(hash('sha256'
 function rint(int $min, int $max): int { return mt_rand($min, $max); }
 function rshuffle(array $a): array { for($i=count($a)-1;$i>0;$i--){ $j=mt_rand(0,$i); $tmp=$a[$i]; $a[$i]=$a[$j]; $a[$j]=$tmp; } return $a; }
 function e(string $s): string { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8'); }
-/* Per-host hit counters for the logs (additive: old log files simply lack these keys). Capped at 50 hosts per group, the rest counted in <field>_other. */
-function hostKey(string $h): string { return substr(preg_replace('/[^a-z0-9.\-]/', '', strtolower($h)), 0, 100); }
-function bumpHostCount(array &$grp, string $field, string $host): void {
-    $k = hostKey($host); if ($k === '') $k = 'unknown';
-    if (!isset($grp[$field]) || !is_array($grp[$field])) $grp[$field] = [];
-    if (isset($grp[$field][$k]) || count($grp[$field]) < 50) $grp[$field][$k] = (int)($grp[$field][$k] ?? 0) + 1;
-    else $grp[$field . '_other'] = (int)($grp[$field . '_other'] ?? 0) + 1;
-}
 function slugify(string $s): string { return preg_replace('/[^a-z0-9]+/','-', strtolower($s)); }
 // Collapse consecutive duplicate words (case-insensitive): "Zone Zone" ->
 // "Zone", "Help Centre Centre" -> "Help Centre", "flexible, flexible" ->
@@ -506,7 +498,6 @@ if ($shouldBlock) {
                 if (is_array($gdata) && isset($gdata['groups'][$agentKey]) && is_array($gdata['groups'][$agentKey])) {
                     $gdata['groups'][$agentKey]['banned_hits'] = (int)($gdata['groups'][$agentKey]['banned_hits'] ?? 0) + 1;
                     $gdata['groups'][$agentKey]['last_banned_hit'] = $nowTs;
-                    bumpHostCount($gdata['groups'][$agentKey], 'hosts_banned', $host);
                     rewind($gf); ftruncate($gf, 0); fwrite($gf, json_encode($gdata)); fflush($gf);
                 }
                 flock($gf, LOCK_UN);
@@ -589,7 +580,6 @@ if ($sf) {
         $seg = explode('/', trim($requestPath, '/'))[0];
         if ($seg !== '' && strlen($seg) <= 40 && count($grp['sections']) < 50) $grp['sections'][$seg] = (int)($grp['sections'][$seg] ?? 0) + 1;
         $grp['last_host'] = $host;
-        bumpHostCount($grp, 'hosts', $host);
         $grp['last_path'] = substr($requestPath, 0, 120);
         // Honeypot: a POST with the login_form marker is a form submission.
         // The first 5 per group are logged in full (host, path, timestamp and
