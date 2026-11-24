@@ -39,6 +39,15 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "${{ secrets.SERVER_HOST }}" >> ~/.ssh/known_hosts
 
+      # Deploy the current code from GitHub to the server. Only the site
+      # code files are sent; logs/ and .maze-bans.json are server runtime
+      # data and are never overwritten by a deploy.
+      - name: Deploy code to server
+        run: |
+          tar -czf - index.php .htaccess \
+            | ssh "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" \
+              "sudo tar --no-same-owner -xzf - -C ${{ secrets.SERVER_PATH }}"
+
       - name: Download files from server
         run: |
           ssh "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" \
@@ -126,15 +135,6 @@ jobs:
           else
             echo "No changes to commit."
           fi
-
-      # Deploy the current code from GitHub to the server. Only the site
-      # code files are sent; logs/ and .maze-bans.json are server runtime
-      # data and are never overwritten by a deploy.
-      - name: Deploy code to server
-        run: |
-          tar -czf - index.php .htaccess \
-            | ssh "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" \
-              "sudo tar --no-same-owner -xzf - -C ${{ secrets.SERVER_PATH }}"
 
       # Pushes made with GITHUB_TOKEN do not trigger the Pages build on their own, so ask for one.
       # Never fails the job: if Pages deploys from "GitHub Actions" instead of a branch, this just logs a note.
