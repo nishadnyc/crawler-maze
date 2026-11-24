@@ -1,26 +1,26 @@
 # Crawler trap traffic report
 
-_Built from 943 log files. Window: 2026-11-22 03:45 to 2026-11-24 07:12 UTC (51.5 h)._
+_Built from 945 log files. Window: 2026-11-22 03:45 to 2026-11-24 07:38 UTC (51.9 h)._
 
 | Metric | Value |
 | --- | ---: |
-| Logged hits | 194,734 |
-| Bot-labelled hits | 171,069 (87.8%) |
-| Distinct IPs | 1,982 |
+| Logged hits | 196,107 |
+| Bot-labelled hits | 172,425 (87.9%) |
+| Distinct IPs | 1,980 |
 | /16 ranges | 682 |
-| Hostnames seen | 334 |
-| Ban entries | 754 |
-| Requests logged during bans | 319,265 |
+| Hostnames seen | 332 |
+| Ban entries | 757 |
+| Requests logged during bans | 322,301 |
 | Form submissions (honeypot) | 2 |
 
 ## Traffic mix
 
 | Source | Hits | Share |  |
 | --- | ---: | ---: | --- |
-| ClaudeBot | 84,764 | 43.5% | `████████████████████` |
-| OAI-SearchBot | 79,625 | 40.9% | `███████████████████` |
-| non-bot user agents | 23,665 | 12.2% | `██████` |
-| GPTBot | 6,534 | 3.4% | `██` |
+| ClaudeBot | 86,117 | 43.9% | `████████████████████` |
+| OAI-SearchBot | 79,625 | 40.6% | `██████████████████` |
+| non-bot user agents | 23,682 | 12.1% | `█████` |
+| GPTBot | 6,537 | 3.3% | `██` |
 | l9scan | 128 | 0.1% | `█` |
 | Claude-User | 9 | 0.0% | `█` |
 | Googlebot | 4 | 0.0% | `█` |
@@ -33,7 +33,7 @@ Day = the date in the log filename (server-local day), newest first.
 
 | Day | Hits | ClaudeBot | OAI-SearchBot | GPTBot | other bots | non-bot | IPs | During bans |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 2026-11-24 | 11,326 | 4,210 | 5,611 | 501 | 0 | 1,004 | 584 | 18,302 |
+| 2026-11-24 | 12,699 | 5,563 | 5,611 | 504 | 0 | 1,021 | 582 | 21,338 |
 | 2026-11-23 | 95,676 | 38,957 | 45,266 | 3,712 | 136 | 7,605 | 974 | 186,027 |
 | 2026-11-22 | 86,226 | 41,191 | 28,355 | 2,282 | 10 | 14,388 | 1,189 | 106,354 |
 | 2026-11-21 | 1,506 | 406 | 393 | 39 | 0 | 668 | 322 | 8,582 |
@@ -44,10 +44,10 @@ Day = the date in the log filename (server-local day), newest first.
 
 | Source | Served | During bans | Received | Share | % of requests banned |  |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| GPTBot | 6,534 | 284,076 | 290,610 | 56.5% | 97.8% | `████████████████████` |
-| ClaudeBot | 84,764 | 15,052 | 99,816 | 19.4% | 15.1% | `███████` |
-| OAI-SearchBot | 79,625 | 19,908 | 99,533 | 19.4% | 20.0% | `███████` |
-| non-bot | 23,665 | 229 | 23,894 | 4.6% | 1.0% | `██` |
+| GPTBot | 6,537 | 287,109 | 293,646 | 56.6% | 97.8% | `████████████████████` |
+| ClaudeBot | 86,117 | 15,052 | 101,169 | 19.5% | 14.9% | `███████` |
+| OAI-SearchBot | 79,625 | 19,911 | 99,536 | 19.2% | 20.0% | `███████` |
+| non-bot | 23,682 | 229 | 23,911 | 4.6% | 1.0% | `██` |
 | l9scan | 128 | 0 | 128 | 0.0% | 0.0% | `█` |
 | Claude-User | 9 | 0 | 9 | 0.0% | 0.0% | `█` |
 | Googlebot | 4 | 0 | 4 | 0.0% | 0.0% | `█` |
@@ -60,9 +60,9 @@ Day = the date in the log filename (server-local day), newest first.
 
 | Bot | Served req/min | Incl. banned req/min | IPs | Single-use IPs | Median IP lifetime (h) | Longest (h) |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| ClaudeBot | 27.5 | 32.3 | 3 | 0 | 17.4 | 51.5 |
+| ClaudeBot | 27.7 | 32.5 | 3 | 0 | 17.9 | 51.9 |
 | OAI-SearchBot | 25.9 | 32.4 | 258 | 1 | 51.2 | 51.2 |
-| GPTBot | 2.1 | 94.4 | 259 | 76 | 6.4 | 51.2 |
+| GPTBot | 2.1 | 94.5 | 259 | 76 | 6.4 | 51.2 |
 | l9scan | 2.5 | 2.5 | 4 | 4 | 0.0 | 0.0 |
 
 **IP churn per day.** Active IPs, with brand-new IPs in brackets. A bot that keeps finding new IPs has a pool larger than what has been seen.
@@ -79,7 +79,7 @@ Day = the date in the log filename (server-local day), newest first.
 | Bot | Bans | By kind | Median gap between bans (s) | Busiest hour (UTC) | Ban length |
 | --- | ---: | --- | ---: | ---: | --- |
 | OAI-SearchBot | 524 | ip 521, agent 2, subnet 1 | 3623 | 04:00 | 10 min |
-| GPTBot | 209 | ip 202, group 3, subnet 3, agent 1 | 601 | 04:00 | 10 min |
+| GPTBot | 212 | ip 205, group 3, subnet 3, agent 1 | 601 | 04:00 | 10 min |
 | ClaudeBot | 15 | ip 6, subnet 4, group 3, agent 2 | 3938 | 04:00 | 10 min |
 | non-bot | 6 | agent 2, ip 2, subnet 2 | 1895 | 04:00 | 10 min |
 
@@ -87,81 +87,81 @@ Day = the date in the log filename (server-local day), newest first.
 
 | Bot | Content requests | Sections | Top-4 share | Evenness | Top sections |
 | --- | ---: | ---: | ---: | ---: | --- |
-| ClaudeBot | 68,015 | 36 | 48.7% | 0.80 | tutorials 11,811, developers 9,679, docs 7,465, features 4,180 |
-| GPTBot | 6,431 | 36 | 13.1% | 0.99 | comparison 222, partners 211, case-studies 207, careers 202 |
+| ClaudeBot | 69,304 | 36 | 48.7% | 0.80 | tutorials 12,033, developers 9,840, docs 7,619, features 4,249 |
+| GPTBot | 6,433 | 36 | 13.1% | 0.99 | comparison 222, partners 211, case-studies 207, careers 202 |
 | l9scan | 112 | 25 | 25.0% | 0.98 | api 12, graphql 8, console 4, server 4 |
 
 ## Hits by domain
 
-Per-host counting covers 189,089 of 194,734 served hits (97.1%). Older logs have no hostname data, so this grows as new logs arrive.
+Per-host counting covers 189,817 of 196,107 served hits (96.8%). Older logs have no hostname data, so this grows as new logs arrive.
 
 **By base domain** (last two labels, so a few multi-part suffixes may group oddly)
 
 | Domain | Hostnames | Served | During bans | Top bots (served) |
 | --- | ---: | ---: | ---: | --- |
-| `nishad.top` | 245 | 188,800 | 302,498 | ClaudeBot 80,808, OAI-SearchBot 77,801, non-bot 23,619 |
-| `chickenkiller.com` | 1 | 271 | 83 | ClaudeBot 270, non-bot 1 |
-| `twilightparadox.com` | 1 | 5 | 43 | non-bot 5 |
-| `mooo.com` | 1 | 13 | 8 | ClaudeBot 13 |
+| `nishad.top` | 249 | 189,102 | 302,849 | ClaudeBot 81,098, OAI-SearchBot 77,801, non-bot 23,631 |
+| `chickenkiller.com` | 1 | 682 | 91 | ClaudeBot 679, non-bot 3 |
+| `twilightparadox.com` | 1 | 8 | 51 | non-bot 8 |
+| `mooo.com` | 1 | 25 | 8 | ClaudeBot 25 |
 
 **Busiest hostnames**
 
 | Hostname | Served | During bans | Top bots (served) |
 | --- | ---: | ---: | --- |
 | `news.nishad.top` | 187,687 | 301,640 | ClaudeBot 80,554, OAI-SearchBot 77,751, non-bot 22,868 |
-| `cleo.chickenkiller.com` | 271 | 83 | ClaudeBot 270, non-bot 1 |
+| `cleo.chickenkiller.com` | 682 | 91 | ClaudeBot 679, non-bot 3 |
 | `appdev.nishad.top` | 338 | 0 | non-bot 338 |
 | `apptest.nishad.top` | 338 | 0 | non-bot 338 |
-| `database-zone.nishad.top` | 122 | 31 | ClaudeBot 122 |
-| `recorded.twilightparadox.com` | 5 | 43 | non-bot 5 |
-| `developer-zone.nishad.top` | 0 | 21 |  |
-| `kamka.mooo.com` | 13 | 8 | ClaudeBot 13 |
-| `docs.nishad.top` | 15 | 4 | ClaudeBot 15 |
-| `zone.nishad.top` | 2 | 17 | ClaudeBot 2 |
-| `control.nishad.top` | 0 | 18 |  |
-| `database-developer.nishad.top` | 14 | 4 | ClaudeBot 14 |
-| `database.nishad.top` | 15 | 3 | non-bot 10, ClaudeBot 5 |
-| `developer-works.nishad.top` | 0 | 18 |  |
-| `hub-base.nishad.top` | 0 | 18 |  |
+| `database-zone.nishad.top` | 297 | 31 | ClaudeBot 297 |
+| `recorded.twilightparadox.com` | 8 | 51 | non-bot 8 |
+| `kamka.mooo.com` | 25 | 8 | ClaudeBot 25 |
+| `database-developer.nishad.top` | 26 | 4 | ClaudeBot 26 |
+| `database.nishad.top` | 27 | 3 | ClaudeBot 17, non-bot 10 |
+| `developer-zone.nishad.top` | 0 | 29 |  |
+| `docs.nishad.top` | 24 | 4 | ClaudeBot 24 |
+| `studio.nishad.top` | 2 | 25 | ClaudeBot 2 |
+| `zone.nishad.top` | 2 | 25 | ClaudeBot 2 |
+| `developer-works.nishad.top` | 0 | 26 |  |
+| `hub-base.nishad.top` | 0 | 26 |  |
 
 ## Named crawlers
 
 ### ClaudeBot
 
 - **Owner:** Amazon.com, Inc. (AS16509)
-- **Hits:** 84,764 (43.5%) from 3 IP(s) in 1 /16 range(s)
+- **Hits:** 86,117 (43.9%) from 3 IP(s) in 1 /16 range(s)
 - **/24 ranges (IPs):** `216.73.216.0/24` (3)
 - **Vendor range check:** all 3 IPs are inside the vendor's published ranges
 - **Link-follow vs direct:** 0.0% followed maze links, 100.0% direct fetches
-- **robots.txt requests:** 8,820 (10.4%); sitemap.xml: 6,915
-- **Requests per IP:** 28,254.7 average
+- **robots.txt requests:** 8,869 (10.3%); sitemap.xml: 6,929
+- **Requests per IP:** 28,705.7 average
 - **Bans:** 76; 15,052 further requests logged while banned
-- **Top sections:** tutorials 11,811, developers 9,679, robots.txt 8,820, docs 7,465, sitemap.xml 6,915, features 4,180
+- **Top sections:** tutorials 12,033, developers 9,840, robots.txt 8,869, docs 7,619, sitemap.xml 6,929, features 4,249
 - **User agent:** `Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; ClaudeBot/1.0; +claudebot@anthropic.com)`
 
 ### OAI-SearchBot
 
 - **Owner:** Microsoft Corporation (AS8075)
-- **Hits:** 79,625 (40.9%) from 258 IP(s) in 2 /16 range(s)
+- **Hits:** 79,625 (40.6%) from 258 IP(s) in 2 /16 range(s)
 - **/24 ranges (IPs):** `74.7.230.0/24` (52), `74.7.244.0/24` (52), `74.7.228.0/24` (51), `74.7.241.0/24` (51), `74.7.175.0/24` (50), `51.8.102.0/24` (2)
 - **Vendor range check:** all 258 IPs are inside the vendor's published ranges
 - **Link-follow vs direct:** 0.0% followed maze links, 100.0% direct fetches
 - **robots.txt requests:** 79,625 (100.0%); sitemap.xml: 0
 - **Requests per IP:** 308.6 average
-- **Bans:** 1,180; 19,908 further requests logged while banned
+- **Bans:** 1,180; 19,911 further requests logged while banned
 - **Top sections:** robots.txt 79,625
 - **User agent:** `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36; c`
 
 ### GPTBot
 
 - **Owner:** Microsoft Corporation (AS8075)
-- **Hits:** 6,534 (3.4%) from 259 IP(s) in 3 /16 range(s)
+- **Hits:** 6,537 (3.3%) from 259 IP(s) in 3 /16 range(s)
 - **/24 ranges (IPs):** `74.7.227.0/24` (92), `74.7.242.0/24` (43), `74.7.241.0/24` (41), `74.7.243.0/24` (41), `132.196.86.0/24` (23), `172.182.202.0/24` (13), `172.182.207.0/24` (6)
 - **Vendor range check:** all 259 IPs are inside the vendor's published ranges
 - **Link-follow vs direct:** 97.9% followed maze links, 2.1% direct fetches
-- **robots.txt requests:** 0 (0.0%); sitemap.xml: 98
+- **robots.txt requests:** 0 (0.0%); sitemap.xml: 99
 - **Requests per IP:** 25.2 average
-- **Bans:** 274; 284,076 further requests logged while banned
+- **Bans:** 277; 287,109 further requests logged while banned
 - **Top sections:** comparison 222, partners 211, case-studies 207, careers 202, knowledge-base 202, platform 200
 - **User agent:** `Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; GPTBot/1.4; +https://openai.com/gptbot)`
 
@@ -225,38 +225,37 @@ Per-host counting covers 189,089 of 194,734 served hits (97.1%). Older logs have
 
 | Owner | Hits | Share | /16s | IPs | Top ranges |
 | --- | ---: | ---: | ---: | ---: | --- |
-| Microsoft Corporation (AS8075) | 86,677 | 44.5% | 12 | 532 | `74.7.0.0/16`, `20.219.0.0/16`, `172.182.0.0/16`, `132.196.0.0/16` |
-| Amazon.com, Inc. (AS16509) | 85,015 | 43.7% | 27 | 29 | `216.73.0.0/16`, `18.217.0.0/16`, `16.145.0.0/16`, `16.147.0.0/16` |
-| Google LLC (AS396982) | 7,350 | 3.8% | 64 | 87 | `34.154.0.0/16`, `34.96.0.0/16`, `34.79.0.0/16`, `34.21.0.0/16` |
+| Microsoft Corporation (AS8075) | 86,680 | 44.2% | 12 | 532 | `74.7.0.0/16`, `20.219.0.0/16`, `172.182.0.0/16`, `132.196.0.0/16` |
+| Amazon.com, Inc. (AS16509) | 86,368 | 44.0% | 27 | 29 | `216.73.0.0/16`, `18.217.0.0/16`, `16.145.0.0/16`, `16.147.0.0/16` |
+| Google LLC (AS396982) | 7,350 | 3.7% | 64 | 87 | `34.154.0.0/16`, `34.96.0.0/16`, `34.79.0.0/16`, `34.21.0.0/16` |
 | UCLOUD INFORMATION TECHNOLOGY (HK) LIMITED (AS135377) | 4,730 | 2.4% | 6 | 11 | `152.32.0.0/16`, `154.51.0.0/16`, `45.249.0.0/16`, `103.218.0.0/16` |
 | Techoff Srv Limited (AS48090) | 1,409 | 0.7% | 2 | 5 | `195.178.0.0/16`, `45.148.0.0/16` |
 | AGOTOZ PTE. LTD. (AS9465) | 1,393 | 0.7% | 1 | 7 | `156.225.0.0/16` |
-| Facebook, Inc. (AS32934) | 693 | 0.4% | 4 | 112 | `173.252.0.0/16`, `57.141.0.0/16`, `69.63.0.0/16`, `69.171.0.0/16` |
+| Facebook, Inc. (AS32934) | 694 | 0.4% | 4 | 104 | `173.252.0.0/16`, `57.141.0.0/16`, `69.63.0.0/16`, `69.171.0.0/16` |
 | Alibaba (US) Technology Co., Ltd. (AS45102) | 603 | 0.3% | 8 | 31 | `43.106.0.0/16`, `8.218.0.0/16`, `43.98.0.0/16`, `47.84.0.0/16` |
 | Amazon.com, Inc. (AS14618) | 587 | 0.3% | 145 | 221 | `3.238.0.0/16`, `3.235.0.0/16`, `32.197.0.0/16`, `44.204.0.0/16` |
 | Team Blue Carrier Limited (AS34282) | 507 | 0.3% | 1 | 2 | `85.92.0.0/16` |
-| OVH SAS (AS16276) | 487 | 0.3% | 23 | 27 | `158.69.0.0/16`, `51.79.0.0/16`, `139.99.0.0/16`, `148.113.0.0/16` |
-| Tencent Building, Kejizhongyi Avenue (AS132203) | 458 | 0.2% | 34 | 118 | `43.157.0.0/16`, `43.166.0.0/16`, `43.130.0.0/16`, `43.153.0.0/16` |
+| OVH SAS (AS16276) | 487 | 0.2% | 23 | 27 | `158.69.0.0/16`, `51.79.0.0/16`, `139.99.0.0/16`, `148.113.0.0/16` |
+| Tencent Building, Kejizhongyi Avenue (AS132203) | 465 | 0.2% | 34 | 123 | `43.157.0.0/16`, `43.166.0.0/16`, `43.130.0.0/16`, `43.165.0.0/16` |
 | CHINANET Guangdong province network (AS58466) | 435 | 0.2% | 1 | 5 | `106.75.0.0/16` |
 | NTT America, Inc. (AS2914) | 432 | 0.2% | 1 | 10 | `216.167.0.0/16` |
 | DigitalOcean, LLC (AS14061) | 292 | 0.1% | 35 | 47 | `68.183.0.0/16`, `138.68.0.0/16`, `142.93.0.0/16`, `206.189.0.0/16` |
-| GitHub, Inc. (AS36459) | 258 | 0.1% | 1 | 42 | `140.82.0.0/16` |
-| M247 Europe SRL (AS9009) | 257 | 0.1% | 7 | 20 | `146.70.0.0/16`, `103.4.0.0/16`, `103.196.0.0/16`, `104.253.0.0/16` |
+| M247 Europe SRL (AS9009) | 260 | 0.1% | 8 | 22 | `146.70.0.0/16`, `103.4.0.0/16`, `103.196.0.0/16`, `104.253.0.0/16` |
+| GitHub, Inc. (AS36459) | 260 | 0.1% | 1 | 42 | `140.82.0.0/16` |
 | Cloudflare, Inc. (AS13335) | 232 | 0.1% | 2 | 22 | `104.29.0.0/16`, `104.28.0.0/16` |
-| Nexeon Technologies, Inc. (AS20278) | 199 | 0.1% | 2 | 3 | `23.94.0.0/16`, `23.95.0.0/16` |
+| HostPapa (AS36352) | 204 | 0.1% | 9 | 11 | `23.94.0.0/16`, `107.172.0.0/16`, `107.174.0.0/16`, `107.173.0.0/16` |
 | Fastly, Inc. (AS394192) | 196 | 0.1% | 1 | 183 | `87.81.0.0/16` |
 | WholeSale Internet, Inc. (AS32097) | 188 | 0.1% | 1 | 1 | `23.128.0.0/16` |
 | GTT Communications Inc. (AS3257) | 180 | 0.1% | 2 | 5 | `70.39.0.0/16`, `216.36.0.0/16` |
 | VPS Dedicated LLC (AS197769) | 177 | 0.1% | 1 | 2 | `102.220.0.0/16` |
+| Cablevision Systems Corp. (AS6128) | 172 | 0.1% | 2 | 2 | `69.115.0.0/16`, `172.56.0.0/16` |
 | Eweka Internet Services B.V. (AS34343) | 171 | 0.1% | 2 | 4 | `81.171.0.0/16`, `91.148.0.0/16` |
 | CustodianDC Limited (AS50300) | 154 | 0.1% | 1 | 3 | `5.102.0.0/16` |
 | Tc Datacenter Limited (AS218785) | 139 | 0.1% | 1 | 3 | `45.138.0.0/16` |
 | Censys, Inc. (AS398324) | 131 | 0.1% | 1 | 6 | `66.132.0.0/16` |
-| Cablevision Systems Corp. (AS6128) | 102 | 0.1% | 1 | 1 | `69.115.0.0/16` |
 | Colocation America Corporation (AS47007) | 101 | 0.1% | 2 | 2 | `173.46.0.0/16`, `171.22.0.0/16` |
 | Datacamp Limited (AS212238) | 87 | 0.0% | 15 | 35 | `205.188.0.0/16`, `169.150.0.0/16`, `84.233.0.0/16`, `156.146.0.0/16` |
 | 1337 Services GmbH (AS210558) | 67 | 0.0% | 1 | 1 | `45.94.0.0/16` |
-| T-Mobile USA, Inc. (AS21928) | 64 | 0.0% | 1 | 2 | `172.56.0.0/16` |
 | Virtual Systems LLC (AS6698) | 64 | 0.0% | 2 | 2 | `91.218.0.0/16`, `85.137.0.0/16` |
 | HostRoyale Technologies Pvt Ltd (AS207990) | 51 | 0.0% | 9 | 23 | `83.229.0.0/16`, `217.194.0.0/16`, `188.212.0.0/16`, `213.255.0.0/16` |
 | Akamai Connected Cloud (AS63949) | 47 | 0.0% | 11 | 21 | `172.236.0.0/16`, `45.79.0.0/16`, `172.104.0.0/16`, `172.239.0.0/16` |
@@ -268,7 +267,7 @@ Per-host counting covers 189,089 of 194,734 served hits (97.1%). Older logs have
 | Oracle Corporation (AS31898) | 32 | 0.0% | 2 | 2 | `129.213.0.0/16`, `141.148.0.0/16` |
 | Hetzner Online GmbH (AS24940) | 30 | 0.0% | 10 | 11 | `88.198.0.0/16`, `91.98.0.0/16`, `116.202.0.0/16`, `157.90.0.0/16` |
 | Leaseweb Canada Inc. (AS32613) | 24 | 0.0% | 1 | 15 | `192.175.0.0/16` |
-| Driftnet Ltd (AS211298) | 22 | 0.0% | 3 | 12 | `195.96.0.0/16`, `87.236.0.0/16`, `185.247.0.0/16` |
+| Driftnet Ltd (AS211298) | 23 | 0.0% | 3 | 13 | `195.96.0.0/16`, `87.236.0.0/16`, `185.247.0.0/16` |
 | Evoxt Sdn. Bhd. (AS149440) | 22 | 0.0% | 1 | 1 | `96.126.0.0/16` |
 | IP Volume inc (AS202425) | 15 | 0.0% | 4 | 7 | `94.102.0.0/16`, `89.248.0.0/16`, `93.174.0.0/16`, `45.140.0.0/16` |
 | Web2Objects LLC (AS62874) | 14 | 0.0% | 3 | 5 | `142.147.0.0/16`, `104.238.0.0/16`, `45.56.0.0/16` |
@@ -277,15 +276,14 @@ Per-host counting covers 189,089 of 194,734 served hits (97.1%). Older logs have
 | Modat B.V. (AS209334) | 13 | 0.0% | 1 | 9 | `85.217.0.0/16` |
 | LogicWeb Inc. (AS64286) | 12 | 0.0% | 3 | 3 | `149.57.0.0/16`, `154.6.0.0/16`, `173.239.0.0/16` |
 | EGIHosting (AS18779) | 11 | 0.0% | 3 | 8 | `23.27.0.0/16`, `104.165.0.0/16`, `205.164.0.0/16` |
-| Level 3 Parent, LLC (AS3356) | 11 | 0.0% | 3 | 8 | `205.169.0.0/16`, `92.112.0.0/16`, `104.252.0.0/16` |
 | Hangzhou Alibaba Advertising Co.,Ltd. (AS37963) | 11 | 0.0% | 5 | 5 | `120.55.0.0/16`, `47.108.0.0/16`, `47.96.0.0/16`, `8.137.0.0/16` |
 | Korea Telecom (AS4766) | 11 | 0.0% | 2 | 2 | `59.14.0.0/16`, `211.230.0.0/16` |
-| HostPapa (AS36352) | 10 | 0.0% | 8 | 9 | `107.172.0.0/16`, `107.174.0.0/16`, `107.173.0.0/16`, `172.245.0.0/16` |
 | Blatant (AS403005) | 10 | 0.0% | 1 | 1 | `64.89.0.0/16` |
 | Latitude.sh (AS396356) | 9 | 0.0% | 4 | 9 | `81.168.0.0/16`, `104.239.0.0/16`, `185.48.0.0/16`, `216.173.0.0/16` |
 | CHINA UNICOM China169 Backbone (AS4837) | 8 | 0.0% | 2 | 3 | `113.224.0.0/16`, `113.232.0.0/16` |
 | GRUPO PANAGLOBAL 15 S.A (AS264617) | 8 | 0.0% | 3 | 5 | `45.39.0.0/16`, `170.231.0.0/16`, `185.191.0.0/16` |
 | British Telecommunications Limited (AS2856) | 8 | 0.0% | 1 | 2 | `31.121.0.0/16` |
+| Level 3 Parent, LLC (AS3356) | 7 | 0.0% | 2 | 5 | `205.169.0.0/16`, `104.252.0.0/16` |
 | Chinanet (AS4134) | 7 | 0.0% | 4 | 5 | `49.87.0.0/16`, `123.160.0.0/16`, `120.39.0.0/16`, `58.59.0.0/16` |
 | Verizon Business (AS701) | 6 | 0.0% | 3 | 3 | `100.17.0.0/16`, `65.206.0.0/16`, `98.113.0.0/16` |
 | ASLINE LIMITED (AS137951) | 6 | 0.0% | 1 | 1 | `168.76.0.0/16` |
@@ -295,14 +293,13 @@ Per-host counting covers 189,089 of 194,734 served hits (97.1%). Older logs have
 | Leaseweb USA, Inc. (AS395954) | 5 | 0.0% | 2 | 4 | `152.163.0.0/16`, `212.42.0.0/16` |
 | Global Transit Systems LLC (AS213954) | 5 | 0.0% | 1 | 3 | `185.201.0.0/16` |
 | LINZ STROM GAS WAERME GmbH fuer Energiedienstleistungen und Telekommunikation (AS35369) | 5 | 0.0% | 1 | 2 | `185.242.0.0/16` |
-| Internet Resources Management SRL (AS48955) | 5 | 0.0% | 2 | 3 | `188.214.0.0/16`, `89.40.0.0/16` |
 | Leaseweb Deutschland GmbH (AS28753) | 5 | 0.0% | 3 | 4 | `82.22.0.0/16`, `204.217.0.0/16`, `31.59.0.0/16` |
+| Nexeon Technologies, Inc. (AS20278) | 5 | 0.0% | 1 | 1 | `23.95.0.0/16` |
 | Comcast Cable Communications, LLC (AS7922) | 5 | 0.0% | 3 | 3 | `48.46.0.0/16`, `73.137.0.0/16`, `48.45.0.0/16` |
 | Server Galactic Private Limited (AS150423) | 5 | 0.0% | 3 | 5 | `82.108.0.0/16`, `87.82.0.0/16`, `62.105.0.0/16` |
 | Yanoor Islam Khan (AS213186) | 5 | 0.0% | 1 | 1 | `98.142.0.0/16` |
 | RCN (AS6079) | 4 | 0.0% | 3 | 3 | `216.133.0.0/16`, `108.171.0.0/16`, `170.124.0.0/16` |
 | SAKURA Internet Inc. (AS7684) | 4 | 0.0% | 1 | 1 | `133.242.0.0/16` |
-| Psychz Networks (AS40676) | 4 | 0.0% | 2 | 3 | `136.0.0.0/16`, `205.236.0.0/16` |
 | Apple Inc. (AS714) | 4 | 0.0% | 1 | 1 | `17.166.0.0/16` |
 | Cox Communications Inc. (AS22773) | 4 | 0.0% | 2 | 4 | `90.96.0.0/16`, `184.181.0.0/16` |
 | B2 Net Solutions Inc. (AS55286) | 4 | 0.0% | 4 | 4 | `192.198.0.0/16`, `209.127.0.0/16`, `23.229.0.0/16`, `38.154.0.0/16` |
@@ -310,8 +307,10 @@ Per-host counting covers 189,089 of 194,734 served hits (97.1%). Older logs have
 | VeriSign Infrastructure & Operations (AS11840) | 4 | 0.0% | 1 | 1 | `72.13.0.0/16` |
 | kabelplus GmbH (AS8339) | 4 | 0.0% | 1 | 1 | `81.217.0.0/16` |
 | WS Telecom Inc (AS213541) | 4 | 0.0% | 1 | 1 | `85.28.0.0/16` |
+| Internetport Sweden AB (AS49770) | 4 | 0.0% | 1 | 3 | `92.112.0.0/16` |
 | Zenlayer Inc (AS21859) | 3 | 0.0% | 1 | 2 | `109.105.0.0/16` |
 | Philippine Long Distance Telephone Company (AS9299) | 3 | 0.0% | 1 | 1 | `119.93.0.0/16` |
+| Leaseweb USA, Inc. (AS27411) | 3 | 0.0% | 2 | 3 | `136.0.0.0/16`, `142.111.0.0/16` |
 | Datacamp Limited (AS60068) | 3 | 0.0% | 2 | 2 | `138.199.0.0/16`, `185.152.0.0/16` |
 | Comcast Cable Communications, LLC (AS33659) | 3 | 0.0% | 2 | 3 | `138.226.0.0/16`, `170.100.0.0/16` |
 | IT7 Networks Inc (AS25820) | 3 | 0.0% | 1 | 1 | `144.34.0.0/16` |
@@ -331,7 +330,7 @@ Per-host counting covers 189,089 of 194,734 served hits (97.1%). Older logs have
 | AltusHost B.V. (AS51430) | 3 | 0.0% | 2 | 2 | `37.46.0.0/16`, `82.27.0.0/16` |
 | Cablevision Lightpath LLC (AS54004) | 3 | 0.0% | 1 | 3 | `74.48.0.0/16` |
 | INEA sp. z o.o. (AS13110) | 3 | 0.0% | 1 | 1 | `77.65.0.0/16` |
-| Shock Hosting LLC (AS395092) | 3 | 0.0% | 1 | 3 | `82.26.0.0/16` |
+| HGC Global Communications Limited (AS9304) | 3 | 0.0% | 1 | 3 | `82.26.0.0/16` |
 | 1&1 Versatel GmbH (AS8881) | 3 | 0.0% | 2 | 2 | `89.247.0.0/16`, `89.246.0.0/16` |
 | JSC Selectel (AS49505) | 3 | 0.0% | 1 | 1 | `91.206.0.0/16` |
 | Turk Telekom (AS9121) | 3 | 0.0% | 1 | 1 | `95.3.0.0/16` |
@@ -354,6 +353,7 @@ Per-host counting covers 189,089 of 194,734 served hits (97.1%). Older logs have
 | O.m.c. Computers & Communications Ltd (AS44709) | 2 | 0.0% | 2 | 2 | `194.36.0.0/16`, `79.108.0.0/16` |
 | Naukowa I Akademicka Siec Komputerowa - Panstwowy Instytut Badawczy (AS8308) | 2 | 0.0% | 1 | 1 | `195.164.0.0/16` |
 | Charter Communications LLC (AS20115) | 2 | 0.0% | 1 | 2 | `198.138.0.0/16` |
+| Psychz Networks (AS40676) | 2 | 0.0% | 1 | 1 | `205.236.0.0/16` |
 | Hype Enterprises (AS13332) | 2 | 0.0% | 2 | 2 | `206.206.0.0/16`, `67.227.0.0/16` |
 | AIS Fibre (AS133481) | 2 | 0.0% | 1 | 2 | `27.130.0.0/16` |
 | Link3 Technologies Ltd. (AS23688) | 2 | 0.0% | 1 | 1 | `27.147.0.0/16` |
@@ -365,13 +365,13 @@ Per-host counting covers 189,089 of 194,734 served hits (97.1%). Older logs have
 | EN Technologies Pte Ltd (AS133210) | 2 | 0.0% | 1 | 2 | `82.21.0.0/16` |
 | IONOS SE (AS8560) | 2 | 0.0% | 1 | 1 | `82.223.0.0/16` |
 | Virgin Media (AS5089) | 2 | 0.0% | 1 | 1 | `86.18.0.0/16` |
+| Internet Resources Management SRL (AS48955) | 2 | 0.0% | 1 | 1 | `89.40.0.0/16` |
 | ONYPHE SAS (AS213412) | 2 | 0.0% | 2 | 2 | `91.230.0.0/16`, `91.231.0.0/16` |
 | Microsoft Azure | 1 | 0.0% | 1 | 1 | `10.234.0.0/16` |
 | PT Remala Abadi (AS38511) | 1 | 0.0% | 1 | 1 | `101.255.0.0/16` |
 | Elyzium Technologies Pvt. Ltd. (AS134319) | 1 | 0.0% | 1 | 1 | `103.194.0.0/16` |
 | Oy Crea Nova Hosting Solution Ltd (AS51765) | 1 | 0.0% | 1 | 1 | `103.99.0.0/16` |
 | DZCRD Networks Ltd (AS132817) | 1 | 0.0% | 1 | 1 | `119.42.0.0/16` |
-| Leaseweb USA, Inc. (AS27411) | 1 | 0.0% | 1 | 1 | `142.111.0.0/16` |
 | N. DE CARVALHO SANTANA EIRELI (AS264050) | 1 | 0.0% | 1 | 1 | `143.137.0.0/16` |
 | RouterHosting LLC (AS14956) | 1 | 0.0% | 1 | 1 | `153.75.0.0/16` |
 | Hytron Network Services Limited (AS151407) | 1 | 0.0% | 1 | 1 | `154.88.0.0/16` |
@@ -422,13 +422,13 @@ Same user-agent hash across many ranges usually means one operator or toolkit.
 | `Chrome 114 / Android 12` | 926 | 5 | 5 | Google LLC (AS396982) | direct fetch | support, pricing, marketplace |
 | `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWeb` | 823 | 6 | 5 | Alexhost S.r.l. (AS200019), Google LLC (AS396982), RCN (AS60 | direct fetch | env / secrets, config / framework dirs |
 | `Chrome 147 / Windows NT 10` | 796 | 23 | 10 | Alibaba (US) Technology Co., Ltd. (AS45102), F.n.s. Holdings | link-follower | api, favicon.ico |
-| `facebookexternalhit/1.1 (+http://www.facebook.com/` | 633 | 198 | 3 | Facebook, Inc. (AS32934) | direct fetch | robots.txt |
+| `facebookexternalhit/1.1 (+http://www.facebook.com/` | 634 | 199 | 3 | Facebook, Inc. (AS32934) | direct fetch | robots.txt |
 | `Chrome 133 / Linux` | 523 | 3 | 2 | Tc Datacenter Limited (AS218785), Techoff Srv Limited (AS480 | direct fetch | version control / CI, config / framework dirs |
 | `Chrome 120 / Windows NT 10` | 515 | 19 | 19 | 1&1 Versatel GmbH (AS8881), Amazon.com, Inc. (AS14618), Evox | direct fetch | wordpress, php shells / probes |
 | `Mozilla/5.0 (compatible; XML Sitemaps Generator; w` | 505 | 2 | 1 | Team Blue Carrier Limited (AS34282) | link-follower | careers, marketplace, help-centre |
 | `Chrome 133 / Macintosh` | 485 | 2 | 2 | Tc Datacenter Limited (AS218785), Techoff Srv Limited (AS480 | direct fetch | config / framework dirs, env / secrets |
-| `Safari 13 / iPhone OS 13.2.3` | 446 | 258 | 35 | Shenzhen Tencent Computer Systems Company Limited (AS45090), | direct fetch | integrations, tools, status |
-| `Chrome 157 / Windows NT 10` | 410 | 18 | 4 | Leaseweb Canada Inc. (AS32613), Nexeon Technologies, Inc. (A | link-follower | help-centre, webinars, company |
+| `Safari 13 / iPhone OS 13.2.3` | 453 | 261 | 35 | Shenzhen Tencent Computer Systems Company Limited (AS45090), | direct fetch | integrations, tools, status |
+| `Chrome 157 / Windows NT 10` | 410 | 18 | 4 | HostPapa (AS36352), Leaseweb Canada Inc. (AS32613), Nexeon T | link-follower | help-centre, webinars, company |
 | `Chrome 133 / Windows NT 10` | 389 | 4 | 4 | Amazon.com, Inc. (AS14618), Google LLC (AS396982), Tc Datace | direct fetch | config / framework dirs, env / secrets |
 
 ## What the probes ask for
