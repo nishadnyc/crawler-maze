@@ -175,7 +175,7 @@ def categorize(path):
 # ---------------------------------------------------------------------- load
 def new_group():
     return dict(total=0, clicked=0, direct=0, robots=0, banned=0, bans=0, forms=0,
-                subnets=set(), ips=set(), iphashes=set(), sections=collections.Counter(),
+                subnets=set(), ips=set(), iphashes=set(), sections=collections.Counter(), hosts=collections.Counter(), hosts_banned=collections.Counter(),
                 ua="", first=10**12, last=0)
 
 
@@ -219,6 +219,9 @@ def load(logs_dir):
             x["forms"] += g.get("form_submissions", 0)
             x["subnets"].add(sn)
             x["iphashes"].update(g.get("ip_hashes", {}))
+            for fld in ("hosts", "hosts_banned"):
+                if isinstance(g.get(fld), dict):
+                    x[fld].update({h: c for h, c in g[fld].items() if isinstance(c, int)})
             x["ua"] = g.get("user_agent", x["ua"])
             x["first"] = min(x["first"], g.get("first_seen", x["first"]))
             x["last"] = max(x["last"], g.get("last_seen", x["last"]))
@@ -513,6 +516,47 @@ def main():
             L.append("\n**Section focus.** Evenness runs from 0 (one section only) to 1 (perfectly even). robots.txt, sitemap.xml and favicon.ico are excluded.\n")
             L.append(table(["Bot", "Content requests", "Sections", "Top-4 share", "Evenness", "Top sections"],
                            rows, ["l", "r", "r", "r", "r", "l"]))
+
+    # --- per-domain breakdown (only present in logs written after per-host counting was added)
+    host_served = collections.Counter()
+    host_banned = collections.Counter()
+    host_bots = collections.defaultdict(collections.Counter)
+    for k, g in groups.items():
+        label = k[4:] if k.startswith("bot:") else "non-bot"
+        for h, c in g["hosts"].items():
+            host_served[h] += c
+            host_bots[h][label] += c
+        host_banned.update(g["hosts_banned"])
+    if host_served or host_banned:
+        covered = sum(host_served.values())
+        L.append("\n## Hits by domain\n")
+        L.append(f"Per-host counting covers {covered:,} of {total:,} served hits ({pct(covered, total)}). "
+                 "Older logs have no hostname data, so this grows as new logs arrive.\n")
+
+        def base_of(h):
+            parts = h.split(".")
+            return ".".join(parts[-2:]) if len(parts) > 2 else h
+
+        by_base = collections.defaultdict(lambda: dict(hosts=set(), served=0, banned=0, bots=collections.Counter()))
+        for h in set(host_served) | set(host_banned):
+            b = by_base[base_of(h)]
+            b["hosts"].add(h)
+            b["served"] += host_served.get(h, 0)
+            b["banned"] += host_banned.get(h, 0)
+            b["bots"].update(host_bots.get(h, {}))
+        rows = [[f"`{k}`", len(v["hosts"]), f"{v['served']:,}", f"{v['banned']:,}",
+                 ", ".join(f"{n} {c:,}" for n, c in v["bots"].most_common(3))]
+                for k, v in sorted(by_base.items(), key=lambda kv: (-(kv[1]["served"] + kv[1]["banned"]), kv[0]))[:20]]
+        L.append("**By base domain** (last two labels, so a few multi-part suffixes may group oddly)\n")
+        L.append(table(["Domain", "Hostnames", "Served", "During bans", "Top bots (served)"], rows,
+                       ["l", "r", "r", "r", "l"]))
+        top_hosts = sorted(set(host_served) | set(host_banned),
+                           key=lambda h: (-(host_served.get(h, 0) + host_banned.get(h, 0)), h))[:15]
+        L.append("\n**Busiest hostnames**\n")
+        L.append(table(["Hostname", "Served", "During bans", "Top bots (served)"],
+                       [[f"`{h}`", f"{host_served.get(h, 0):,}", f"{host_banned.get(h, 0):,}",
+                         ", ".join(f"{n} {c:,}" for n, c in host_bots[h].most_common(3))] for h in top_hosts],
+                       ["l", "r", "r", "l"]))
 
     # --- named crawlers
     L.append("\n## Named crawlers\n")
