@@ -765,12 +765,12 @@ function mazeQueueAppend(array $hit): bool {
 function mazeFoldPrunedGroup(array &$data, string $agentKey, array $grp): void {
     if (!isset($data['pruned_groups']) || !is_array($data['pruned_groups'])) $data['pruned_groups'] = [];
     if (!isset($data['pruned_groups'][$agentKey]) || !is_array($data['pruned_groups'][$agentKey])) {
-        $data['pruned_groups'][$agentKey] = ['total' => 0, 'banned_hits' => 0, 'clicked' => 0, 'direct' => 0, 'robots' => 0,
+        $data['pruned_groups'][$agentKey] = ['total' => 0, 'banned_hits' => 0, 'robots_violations' => 0, 'clicked' => 0, 'direct' => 0, 'robots' => 0,
             'form_submissions' => 0, 'form_submissions_blocked' => 0, 'ban_count' => 0,
             'sections' => [], 'hosts' => [], 'hosts_banned' => [], 'topics' => [], 'topic_groups' => []];
     }
     $pg = &$data['pruned_groups'][$agentKey];
-    foreach (['total', 'banned_hits', 'clicked', 'direct', 'robots', 'form_submissions', 'form_submissions_blocked', 'ban_count'] as $k) {
+    foreach (['total', 'banned_hits', 'robots_violations', 'clicked', 'direct', 'robots', 'form_submissions', 'form_submissions_blocked', 'ban_count'] as $k) {
         $pg[$k] = (int)($pg[$k] ?? 0) + (int)($grp[$k] ?? 0);
     }
     foreach (['sections', 'hosts', 'hosts_banned', 'topics', 'topic_groups'] as $k) {
@@ -812,6 +812,14 @@ function mazeApplyQueuedHit(array &$data, array $hit, int $banSeconds): array {
         $grp['banned_hits'] = (int)($grp['banned_hits'] ?? 0) + 1;
         $grp['last_banned_hit'] = $nowTs;
         bumpHostCount($grp, 'hosts_banned', $host);
+        // robots.txt respect tracking: while banned, this visitor's
+        // robots.txt says Disallow: / - so any banned visit to a path
+        // other than /robots.txt itself is ignoring it. Counted per
+        // group and in the persistent totals, like banned_hits.
+        if ($requestPath !== '/robots.txt') {
+            $grp['robots_violations'] = (int)($grp['robots_violations'] ?? 0) + 1;
+            $data['totals'][$agentKey]['robots_violations'] = (int)($data['totals'][$agentKey]['robots_violations'] ?? 0) + 1;
+        }
         unset($grp);
         return $res;
     }
@@ -847,6 +855,13 @@ function mazeApplyQueuedHit(array &$data, array $hit, int $banSeconds): array {
     if (!isset($grp['ip_hashes'][$ipHash]) && count($grp['ip_hashes']) < 200) { $grp['ip_hashes'][$ipHash] = 1; $grp['unique_ips'] = count($grp['ip_hashes']); }
     if (!empty($hit['clicked'])) $grp['clicked'] = (int)($grp['clicked'] ?? 0) + 1; else $grp['direct'] = (int)($grp['direct'] ?? 0) + 1;
     if ($requestPath === '/robots.txt') $grp['robots'] = (int)($grp['robots'] ?? 0) + 1;
+    // robots.txt respect tracking (not banned): the public robots.txt
+    // disallows /admin/, /cart/ and /api/ - fetching those anyway is
+    // ignoring it, counted the same way as banned violations above.
+    if (str_starts_with($requestPath, '/admin/') || str_starts_with($requestPath, '/cart/') || str_starts_with($requestPath, '/api/')) {
+        $grp['robots_violations'] = (int)($grp['robots_violations'] ?? 0) + 1;
+        $data['totals'][$agentKey]['robots_violations'] = (int)($data['totals'][$agentKey]['robots_violations'] ?? 0) + 1;
+    }
     $seg = explode('/', trim($requestPath, '/'))[0];
     if (!isset($grp['sections']) || !is_array($grp['sections'])) $grp['sections'] = [];
     if ($seg !== '' && strlen($seg) <= 40 && count($grp['sections']) < 50) $grp['sections'][$seg] = (int)($grp['sections'][$seg] ?? 0) + 1;
@@ -1046,6 +1061,9 @@ if (is_file($banFile)) {
 // today's subnet log (so ban hammering is visible in the stats), then
 // answer 429 immediately and stop - no page is generated at all, and
 // no hold: Retry-After (600s, the ban length) tells them when to retry.
+// Exception: /robots.txt is still served (after the same logging), so a
+// banned visitor is told in robots terms that crawling is not allowed
+// for the ban duration: Disallow: / and no sitemap.
 if ($shouldBlock) {
     $bf3 = @fopen($banFile, 'c+');
     if ($bf3) {
@@ -1085,6 +1103,7 @@ if ($shouldBlock) {
                     $gdata['groups'][$agentKey]['banned_hits'] = (int)($gdata['groups'][$agentKey]['banned_hits'] ?? 0) + 1;
                     $gdata['groups'][$agentKey]['last_banned_hit'] = $nowTs;
                     bumpHostCount($gdata['groups'][$agentKey], 'hosts_banned', $host);
+                    if ($requestPath !== '/robots.txt') $gdata['groups'][$agentKey]['robots_violations'] = (int)($gdata['groups'][$agentKey]['robots_violations'] ?? 0) + 1;
                     rewind($gf); ftruncate($gf, 0); fwrite($gf, json_encode($gdata)); fflush($gf);
                 }
                 flock($gf, LOCK_UN);
@@ -1092,6 +1111,17 @@ if ($shouldBlock) {
             fclose($gf);
         }
     }
+    }
+    // The banned hit above was queue-logged exactly like every other
+    // banned visit (who, when, host, path), so serving robots.txt here
+    // does not hide the attempt: it is counted in banned_hits first.
+    if ($requestPath === '/robots.txt') {
+        http_response_code(200);
+        header('Content-Type: text/plain; charset=UTF-8');
+        header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+        header('Retry-After: ' . $retryAfter);
+        echo "User-agent: *\nDisallow: /\n";
+        exit;
     }
     http_response_code(429);
     header('Retry-After: ' . $retryAfter);
@@ -1247,7 +1277,9 @@ if ($sf) {
 if ($shouldBlock) {
 // A new ban was decided inside the log block: merge it into the global
 // .maze-bans.json (expired entries pruned), then answer this request
-// 429 immediately (after logging), with Retry-After: 600.
+// 429 immediately (after logging), with Retry-After: 600. Exception:
+// /robots.txt gets the banned Disallow: / version instead (see above);
+// this hit was already logged in SECTION 6 like every other visit.
     $bf2 = @fopen($banFile, 'c+');
     if ($bf2) {
         if (flock($bf2, LOCK_EX)) {
@@ -1260,6 +1292,14 @@ if ($shouldBlock) {
             flock($bf2, LOCK_UN);
         }
         fclose($bf2);
+    }
+    if ($requestPath === '/robots.txt') {
+        http_response_code(200);
+        header('Content-Type: text/plain; charset=UTF-8');
+        header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+        header('Retry-After: ' . $retryAfter);
+        echo "User-agent: *\nDisallow: /\n";
+        exit;
     }
     http_response_code(429);
     header('Retry-After: ' . $retryAfter);

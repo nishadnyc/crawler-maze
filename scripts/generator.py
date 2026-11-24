@@ -174,7 +174,7 @@ def categorize(path):
 
 # ---------------------------------------------------------------------- load
 def new_group():
-    return dict(total=0, clicked=0, direct=0, robots=0, banned=0, bans=0, forms=0,
+    return dict(total=0, clicked=0, direct=0, robots=0, banned=0, bans=0, forms=0, robots_violations=0,
                 subnets=set(), ips=set(), iphashes=set(), sections=collections.Counter(), hosts=collections.Counter(), hosts_banned=collections.Counter(),
                 topics=collections.Counter(), topic_groups=collections.Counter(), topics_other=0, topic_groups_other=0, topics_backfilled=0,
                 ua="", first=10**12, last=0)
@@ -215,8 +215,9 @@ def load(logs_dir):
         for key, g in d.get("groups", {}).items():
             x = groups[key]
             for k, src in (("total", "total"), ("clicked", "clicked"), ("direct", "direct"),
-                           ("robots", "robots"), ("banned", "banned_hits"), ("bans", "ban_count")):
-                x[k] += g.get(src, 0)
+                           ("robots", "robots"), ("banned", "banned_hits"), ("bans", "ban_count"),
+                           ("robots_violations", "robots_violations")):
+                x[k] += g.get(src, 0) if isinstance(g.get(src, 0), int) else 0
             x["forms"] += g.get("form_submissions", 0)
             x["subnets"].add(sn)
             x["iphashes"].update(g.get("ip_hashes", {}))
@@ -250,7 +251,8 @@ def load(logs_dir):
                 continue
             x = groups[key]
             for k, srcf in (("total", "total"), ("clicked", "clicked"), ("direct", "direct"),
-                            ("robots", "robots"), ("banned", "banned_hits"), ("bans", "ban_count")):
+                            ("robots", "robots"), ("banned", "banned_hits"), ("bans", "ban_count"),
+                            ("robots_violations", "robots_violations")):
                 if isinstance(pg.get(srcf), int):
                     x[k] += pg[srcf]
             x["forms"] += pg.get("form_submissions", 0) if isinstance(pg.get("form_submissions"), int) else 0
@@ -387,6 +389,10 @@ def build_html_block(info):
     if info["topic_groups"]:
         out.append('<h3 class="rh">Topic groups</h3>')
         out.append(rtable(["Group", "Requests", "Share", "Top bots"], info["topic_groups"], {1, 2}))
+    if info.get("robots_violations"):
+        out.append('<h3 class="rh">robots.txt violations</h3>')
+        out.append('<p class="detail" style="color:#9fb3c8;font-size:.9rem;margin:12px 0 0;">Requests that ignored a Disallow: crawling while banned under Disallow: /, or fetching /admin/, /cart/ or /api/.</p>')
+        out.append(rtable(["Bot", "Violations", "Banned requests"], info["robots_violations"], {1, 2}))
 
     th = "".join(f'<th class="{"n" if i else ""}">{e(h)}</th>' for i, h in enumerate(["Day (log file date)", "Hits"] + info["day_cols"]))
     tr = "".join("<tr>" + "".join(f'<td class="{"n" if i else ""}">{e(str(c))}</td>' for i, c in enumerate(r_)) + "</tr>"
@@ -705,6 +711,9 @@ def main():
             L.append(f"- **Requests per IP:** {g['total'] / nips:,.1f} average")
         if g["bans"] or g["banned"]:
             L.append(f"- **Bans:** {g['bans']:,}; {g['banned']:,} further requests logged while banned")
+        if g["robots_violations"]:
+            L.append(f"- **robots.txt violations:** {g['robots_violations']:,} requests that ignored a Disallow "
+                     f"(crawling while banned under Disallow: /, or fetching /admin/, /cart/ or /api/)")
         if tops:
             L.append(f"- **Top sections:** {tops}")
         ttops = ", ".join(f"{t} {c:,}" for t, c in g["topics"].most_common(6) if t != "topics_other")
@@ -855,10 +864,14 @@ def main():
             topic_group_rows = [[gr, f"{c:,}", pct(c, all_tg),
                                  ", ".join(f"{n} {cc:,}" for n, cc in tg_bots[gr].most_common(2))]
                                 for gr, c in tg_total.most_common()]
+        robots_violation_rows = [[n, f"{g['robots_violations']:,}", f"{g['banned']:,}"]
+                                 for n, g in sorted(named_bots, key=lambda ng: -ng[1]["robots_violations"])
+                                 if g["robots_violations"]]
         update_html(args.html, build_html_block(dict(
             window=f"{U(first)} to {U(last)} UTC", nfiles=nfiles, tiles=tiles, bots=bots_info, others=others_info,
             chips=sorted(secs.items(), key=lambda kv: (-kv[1], kv[0]))[:6], day_cols=dcols, day_rows=day_rows,
             topic_focus=topic_focus_rows, topic_note=topic_note, topic_groups=topic_group_rows,
+            robots_violations=robots_violation_rows,
             forms=sum(g["forms"] for g in groups.values()))))
 
 
