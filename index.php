@@ -1357,42 +1357,76 @@ if ($requestPath === '/robots.txt') {
     echo 'Sitemap: ' . $scheme . '://' . $host . $port . '/sitemap.xml' . "\n";
     exit;
 }
-// sitemap.xml: 50 fresh URLs, ALL on the current host (same reasoning as
-// robots.txt), with randomised lastmod dates, change frequencies and
-// priorities so it looks maintained.
+// sitemap.xml: a sitemap INDEX whose child sitemaps are CUMULATIVE
+// (issue #43, Half B). Until now the sitemap was a fresh 50-URL sample
+// re-rolled daily (audit A5), so a URL a crawler discovered could
+// vanish from the sitemap the next day and discovery evaporated.
+// Now /sitemap.xml is an index and each child (/<n>-sitemap.xml)
+// lists every URL this host's daily sitemap has ever carried, oldest
+// first: the union of the per-day sets back to the sitemap epoch.
+// Each day's set is reproduced exactly - same host+day seed and the
+// same mt draw order as the original daily generator, including the
+// lastmod/freq/pr draws after each accepted path - so nothing already
+// discovered is ever dropped. A URL's <lastmod> is the day it entered
+// the sitemap: stable forever instead of sliding with every fetch.
+// Children hold 500 URLs each (the protocol cap is 50,000; 500 keeps
+// each file small on slow links). robots.txt needs no change: it
+// already points at /sitemap.xml, which is now the index.
 // ---------------------------------------------------------------------------
 if (str_ends_with($requestPath, 'sitemap.xml')) {
     header('Content-Type: application/xml; charset=UTF-8');
     header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
-    // STABLE SITEMAP (audit A5): a real sitemap.xml is a stable file, so
-    // repeated fetches for the same host on the same day must be
-    // byte-identical. Generation is driven by mt_rand seeded with
-    // crc32(host + New York date) instead of the crypto RNG, and paths
-    // are built directly in buildUrl()'s shape (/<section>/<slug>/
-    // <2000-3000>) with its own mt_srand below, because the sitemap
-    // seed is host+DAY while page generation uses host/host+path
-    // seeds - the two must not share an mt sequence. lastmod dates spread over the same wide 2-900 day range
-    // as page dates instead of all landing within the last 5 days.
-    mt_srand(crc32($host . '|' . $todayStr));
-    $smPick = function (array $a) { return $a[mt_rand(0, count($a) - 1)]; };
-    $smUsed = []; $smLinks = []; $tries = 0; $smGroupQueue = [];
-    while (count($smLinks) < 50 && $tries < 1000) {
-        $tries++;
-        if ($topicGroups && mt_rand(0, 9) < 7) { if (empty($smGroupQueue)) { $smGroupQueue = array_keys($topicGroups); for ($si = count($smGroupQueue) - 1; $si > 0; $si--) { $sj = mt_rand(0, $si); $stmp = $smGroupQueue[$si]; $smGroupQueue[$si] = $smGroupQueue[$sj]; $smGroupQueue[$sj] = $stmp; } } $sgSlug = array_shift($smGroupQueue); $stKeys = array_keys($topicGroups[$sgSlug]['topics']); $spath = '/learn/' . $sgSlug . '/' . $stKeys[mt_rand(0, count($stKeys) - 1)] . '/' . mt_rand(10000, 89999); } else $spath = '/' . $smPick($sections) . '/' . trim(slugify(titleWords($smPick($docPages))), '-') . '/' . mt_rand(10000, 89999);
-        if (isset($smUsed[$spath])) continue;
-        $smUsed[$spath] = true;
-        $smLinks[] = ['url' => $scheme . '://' . $host . $port . $spath,
-                      'lm' => date('Y-m-d', $nowTs - mt_rand(2, 900) * 86400 - mt_rand(0, 86399)),
-                      'freq' => $smPick(['daily', 'weekly', 'monthly']),
-                      'pr' => number_format(mt_rand(40, 95) / 100, 1)];
+    $smEpoch = '2026-11-21'; // first day of the daily-sitemap era
+    $smPerChild = 500;
+    // Build the cumulative URL list for this host: [path, entry day, freq, pr].
+    $smAll = []; $smSeen = [];
+    $smDay = new DateTime($smEpoch, new DateTimeZone('America/New_York'));
+    $smLast = new DateTime($todayStr, new DateTimeZone('America/New_York'));
+    while ($smDay <= $smLast) {
+        $smDayStr = $smDay->format('Y-m-d');
+        mt_srand(crc32($host . '|' . $smDayStr));
+        $smPick = function (array $a) { return $a[mt_rand(0, count($a) - 1)]; };
+        $smUsed = []; $tries = 0; $smGroupQueue = []; $smCount = 0;
+        while ($smCount < 50 && $tries < 1000) {
+            $tries++;
+            if ($topicGroups && mt_rand(0, 9) < 7) { if (empty($smGroupQueue)) { $smGroupQueue = array_keys($topicGroups); for ($si = count($smGroupQueue) - 1; $si > 0; $si--) { $sj = mt_rand(0, $si); $stmp = $smGroupQueue[$si]; $smGroupQueue[$si] = $smGroupQueue[$sj]; $smGroupQueue[$sj] = $stmp; } } $sgSlug = array_shift($smGroupQueue); $stKeys = array_keys($topicGroups[$sgSlug]['topics']); $spath = '/learn/' . $sgSlug . '/' . $stKeys[mt_rand(0, count($stKeys) - 1)] . '/' . mt_rand(10000, 89999); } else $spath = '/' . $smPick($sections) . '/' . trim(slugify(titleWords($smPick($docPages))), '-') . '/' . mt_rand(10000, 89999);
+            if (isset($smUsed[$spath])) continue;
+            $smUsed[$spath] = true; $smCount++;
+            // Consume the lastmod draws in the original order (their
+            // values are unused now - lastmod is the entry day) so the
+            // day's URL set reproduces exactly.
+            mt_rand(2, 900); mt_rand(0, 86399);
+            $smFreq = $smPick(['daily', 'weekly', 'monthly']);
+            $smPr = number_format(mt_rand(40, 95) / 100, 1);
+            if (!isset($smSeen[$spath])) { $smSeen[$spath] = true; $smAll[] = [$spath, $smDayStr, $smFreq, $smPr]; }
+        }
+        $smDay->modify('+1 day');
     }
-    echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
-    echo '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . "\n";
-    echo '<url><loc>' . e($scheme . '://' . $host . $port . '/') . '</loc><lastmod>' . date('Y-m-d') . '</lastmod><changefreq>daily</changefreq><priority>1.0</priority></url>' . "\n";
-    foreach ($smLinks as $l) {
-        echo '<url><loc>' . e($l['url']) . '</loc><lastmod>' . $l['lm'] . '</lastmod><changefreq>' . $l['freq'] . '</changefreq><priority>' . $l['pr'] . '</priority></url>' . "\n";
+    $smChildren = max(1, (int)ceil(count($smAll) / $smPerChild));
+    if ($requestPath === '/sitemap.xml') {
+        echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
+        echo '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . "\n";
+        for ($ci = 1; $ci <= $smChildren; $ci++) {
+            $smChunkLast = $smAll[min($ci * $smPerChild, count($smAll)) - 1][1];
+            echo '<sitemap><loc>' . e($scheme . '://' . $host . $port . '/' . $ci . '-sitemap.xml') . '</loc><lastmod>' . $smChunkLast . '</lastmod></sitemap>' . "\n";
+        }
+        echo '</sitemapindex>' . "\n";
+        exit;
     }
-    echo '</urlset>' . "\n";
+    if (preg_match('#^/(\d+)-sitemap\.xml$#', $requestPath, $smM) && (int)$smM[1] >= 1 && (int)$smM[1] <= $smChildren) {
+        $smChunk = array_slice($smAll, ((int)$smM[1] - 1) * $smPerChild, $smPerChild);
+        echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
+        echo '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . "\n";
+        if ((int)$smM[1] === 1) echo '<url><loc>' . e($scheme . '://' . $host . $port . '/') . '</loc><lastmod>' . date('Y-m-d') . '</lastmod><changefreq>daily</changefreq><priority>1.0</priority></url>' . "\n";
+        foreach ($smChunk as $smU) {
+            echo '<url><loc>' . e($scheme . '://' . $host . $port . $smU[0]) . '</loc><lastmod>' . $smU[1] . '</lastmod><changefreq>' . $smU[2] . '</changefreq><priority>' . $smU[3] . '</priority></url>' . "\n";
+        }
+        echo '</urlset>' . "\n";
+        exit;
+    }
+    // A sitemap-shaped path that is neither the index nor a live child.
+    http_response_code(404);
+    echo 'Not found';
     exit;
 }
 // ---------------------------------------------------------------------------
