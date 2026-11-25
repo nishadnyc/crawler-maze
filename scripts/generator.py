@@ -392,6 +392,12 @@ def build_html_block(info):
         out.append('<p class="detail" style="color:#9fb3c8;font-size:.9rem;margin:12px 0 0;">Requests that ignored a Disallow: crawling while banned under Disallow: /, or fetching /admin/, /cart/ or /api/.</p>')
         out.append(rtable(["Bot", "Violations", "Banned requests"], info["robots_violations"], {1, 2}))
 
+    if info.get("funnel"):
+        out.append('<h3 class="rh">Crawl funnel</h3>')
+        out.append('<p class="detail" style="color:#9fb3c8;font-size:.9rem;margin:12px 0 0;">Requests at each step of the discovery path; the percentage is the share of the previous step that reached this one. Homepage hits are served requests with no section recorded.</p>')
+        out.append(rtable(["Bot", "robots.txt", "sitemap.xml", "Homepage", "Section pages", "/learn/ pages", "Clicked", "Direct"],
+                          info["funnel"], {1, 2, 3, 4, 5, 6, 7}))
+
     th = "".join(f'<th class="{"n" if i else ""}">{e(h)}</th>' for i, h in enumerate(["Day (log file date)", "Hits"] + info["day_cols"]))
     tr = "".join("<tr>" + "".join(f'<td class="{"n" if i else ""}">{e(str(c))}</td>' for i, c in enumerate(r_)) + "</tr>"
                  for r_ in info["day_rows"])
@@ -616,6 +622,33 @@ def main():
             L.append(note + "\n")
             L.append(table(["Bot", "Topic requests", "Topics", "Top-4 share", "Evenness", "Top topics"],
                            rows, ["l", "r", "r", "r", "r", "l"]))
+
+    # --- crawl funnel (per-bot discovery path, from the group aggregates the
+    # logs already hold; the homepage is the one served page the maze logs
+    # without a section, so its count is the residual total - sum(sections))
+    funnel_rows = []
+    if named_bots:
+        for n, g in named_bots:
+            sec = g["sections"]
+            steps = [g["robots"], sec.get("sitemap.xml", 0),
+                     g["total"] - sum(sec.values()),
+                     sum(c for s_, c in sec.items() if s_ not in SITE_SECTIONS and s_ != "learn"),
+                     sec.get("learn", 0)]
+            row = [n, f"{steps[0]:,}"]
+            row += [f"{v:,} ({pct(v, p)})" for v, p in zip(steps[1:], steps)]
+            row += [f"{g['clicked']:,} ({pct(g['clicked'], g['total'])})",
+                    f"{g['direct']:,} ({pct(g['direct'], g['total'])})"]
+            funnel_rows.append(row)
+        L.append("\n## Crawl funnel\n")
+        L.append("Requests at each step of the discovery path; the percentage is the share of the previous "
+                 "step that reached this one. Homepage hits are served requests with no section recorded — "
+                 "the root path is the only page the maze serves without one. The steps are request volumes, "
+                 "not sessions: a bot can fetch the sitemap without asking for robots.txt, or walk section "
+                 "pages without visiting the homepage, so a later step can exceed the one before it. "
+                 "Clicked and direct are shares of all served hits.\n")
+        L.append(table(["Bot", "robots.txt", "sitemap.xml", "Homepage", "Section pages", "/learn/ pages",
+                        "Clicked", "Direct"],
+                       funnel_rows, ["l", "r", "r", "r", "r", "r", "r", "r"]))
 
     # --- topic groups (only present in logs written after topic counting was added)
     tg_total = collections.Counter()
@@ -876,7 +909,7 @@ def main():
             window=f"{U(first)} to {U(last)} UTC", nfiles=nfiles, tiles=tiles, bots=bots_info, others=others_info,
             chips=sorted(secs.items(), key=lambda kv: (-kv[1], kv[0]))[:6], day_cols=dcols, day_rows=day_rows,
             topic_focus=topic_focus_rows, topic_note=topic_note, topic_groups=topic_group_rows,
-            robots_violations=robots_violation_rows)))
+            robots_violations=robots_violation_rows, funnel=funnel_rows)))
 
 
 if __name__ == "__main__":
