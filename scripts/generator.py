@@ -394,7 +394,7 @@ def build_html_block(info):
 
     if info.get("funnel"):
         out.append('<h3 class="rh">Crawl funnel</h3>')
-        out.append('<p class="detail" style="color:#9fb3c8;font-size:.9rem;margin:12px 0 0;">Requests at each step of the discovery path; the percentage is the share of the previous step that reached this one. Homepage hits are served requests with no section recorded.</p>')
+        out.append('<p class="detail" style="color:#9fb3c8;font-size:.9rem;margin:12px 0 0;">Requests at each step of the discovery path; the percentage is the share of the previous step that reached this one. Homepage hits are served requests with no section recorded (overwhelmingly the root path). The steps are section-based counts.</p>')
         out.append(rtable(["Bot", "robots.txt", "sitemap.xml", "Homepage", "Section pages", "/learn/ pages", "Clicked", "Direct"],
                           info["funnel"], {1, 2, 3, 4, 5, 6, 7}))
 
@@ -624,8 +624,9 @@ def main():
                            rows, ["l", "r", "r", "r", "r", "l"]))
 
     # --- crawl funnel (per-bot discovery path, from the group aggregates the
-    # logs already hold; the homepage is the one served page the maze logs
-    # without a section, so its count is the residual total - sum(sections))
+    # logs already hold; the homepage count is the residual
+    # total - sum(sections) — served requests with no section recorded,
+    # overwhelmingly the root path)
     funnel_rows = []
     if named_bots:
         for n, g in named_bots:
@@ -641,11 +642,14 @@ def main():
             funnel_rows.append(row)
         L.append("\n## Crawl funnel\n")
         L.append("Requests at each step of the discovery path; the percentage is the share of the previous "
-                 "step that reached this one. Homepage hits are served requests with no section recorded — "
-                 "the root path is the only page the maze serves without one. The steps are request volumes, "
+                 "step that reached this one. Homepage hits are served requests with no section recorded "
+                 "(overwhelmingly the root path). The steps are request volumes, "
                  "not sessions: a bot can fetch the sitemap without asking for robots.txt, or walk section "
                  "pages without visiting the homepage, so a later step can exceed the one before it. "
-                 "Clicked and direct are shares of all served hits.\n")
+                 "Clicked and direct are shares of all served hits. "
+                 "The steps are section-based counts: the /learn/ step is the learn section count, "
+                 "counted separately from the topic-request counter behind Topic focus, "
+                 "so the two figures need not match.\n")
         L.append(table(["Bot", "robots.txt", "sitemap.xml", "Homepage", "Section pages", "/learn/ pages",
                         "Clicked", "Direct"],
                        funnel_rows, ["l", "r", "r", "r", "r", "r", "r", "r"]))
