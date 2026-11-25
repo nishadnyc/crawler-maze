@@ -72,6 +72,36 @@ function picks(array $a, int $n): array { $o=[];$c=$a; for($i=0;$i<$n&&$c;$i++){
 // Only content/presentation uses this; ban logic, log timestamps,
 // cookie tokens and honeypot handling keep the crypto RNG / time().
 function srand2(string $seed): void { mt_srand((int)(hexdec(substr(hash('sha256', $seed), 0, 8)) & 0x7fffffff)); }
+// RENEWABLE URL IDS (issue #46): page IDs used to be the raw seeded
+// mt_rand(10000, 89999) draw - one finite 80,000-ID space that crawlers
+// can in principle exhaust / dedup. From MAZE_ID_V2_FROM on, the drawn
+// ID is passed through a per-day affine permutation of the same range:
+// id' = 10000 + ((id - 10000) * a + b) mod 80000, where a (coprime to
+// 80000, so the map is a bijection) and b are derived from a hash of
+// the bucket day. Properties: (1) days before the cutover are the
+// identity map, so every historical page, link and sitemap day-set
+// reproduces byte-identically; (2) within a day the map is fixed, so
+// renders and sitemap children stay deterministic; (3) the transform
+// consumes NO mt draws, so the seeded stream - and therefore every
+// other pick on the page - is untouched; (4) a and b jump
+// pseudo-randomly from day to day, so IDs are not monotonic across
+// days and the day cannot be read back from an ID; (5) page content
+// is seeded by host+path (SECTION 8), so a renewed ID is automatically
+// a genuinely new page variant, while every previously issued URL
+// keeps serving its own content unchanged.
+// MAZE_ID_V2_FROM must be the first FULL day after this code deploys:
+// if deploy slips to 2026-11-27 or later, bump it to the day after
+// the deploy date before deploying.
+define('MAZE_ID_V2_FROM', '2026-11-27');
+function mazeRenewId(int $id, string $dayStr): int {
+    if ($dayStr === '' || $dayStr < MAZE_ID_V2_FROM) return $id;
+    $h = hash('sha256', 'idperm|' . $dayStr);
+    $a = (hexdec(substr($h, 0, 6)) % 40000) * 2 + 1; // odd, 1..79999
+    if ($a % 5 === 0) $a += 2; // coprime to 80000 requires a % 5 != 0
+    if ($a === 1) $a = 3; // avoid a pure rotation
+    $b = hexdec(substr($h, 6, 6)) % 80000;
+    return 10000 + ((($id - 10000) * $a + $b) % 80000);
+}
 function rint(int $min, int $max): int { return mt_rand($min, $max); }
 function rshuffle(array $a): array { for($i=count($a)-1;$i>0;$i--){ $j=mt_rand(0,$i); $tmp=$a[$i]; $a[$i]=$a[$j]; $a[$j]=$tmp; } return $a; }
 function e(string $s): string { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8'); }
@@ -1389,7 +1419,7 @@ if (str_ends_with($requestPath, 'sitemap.xml')) {
         $smUsed = []; $tries = 0; $smGroupQueue = []; $smCount = 0;
         while ($smCount < 50 && $tries < 1000) {
             $tries++;
-            if ($topicGroups && mt_rand(0, 9) < 7) { if (empty($smGroupQueue)) { $smGroupQueue = array_keys($topicGroups); for ($si = count($smGroupQueue) - 1; $si > 0; $si--) { $sj = mt_rand(0, $si); $stmp = $smGroupQueue[$si]; $smGroupQueue[$si] = $smGroupQueue[$sj]; $smGroupQueue[$sj] = $stmp; } } $sgSlug = array_shift($smGroupQueue); $stKeys = array_keys($topicGroups[$sgSlug]['topics']); $spath = '/learn/' . $sgSlug . '/' . $stKeys[mt_rand(0, count($stKeys) - 1)] . '/' . mt_rand(10000, 89999); } else $spath = '/' . $smPick($sections) . '/' . trim(slugify(titleWords($smPick($docPages))), '-') . '/' . mt_rand(10000, 89999);
+            if ($topicGroups && mt_rand(0, 9) < 7) { if (empty($smGroupQueue)) { $smGroupQueue = array_keys($topicGroups); for ($si = count($smGroupQueue) - 1; $si > 0; $si--) { $sj = mt_rand(0, $si); $stmp = $smGroupQueue[$si]; $smGroupQueue[$si] = $smGroupQueue[$sj]; $smGroupQueue[$sj] = $stmp; } } $sgSlug = array_shift($smGroupQueue); $stKeys = array_keys($topicGroups[$sgSlug]['topics']); $spath = '/learn/' . $sgSlug . '/' . $stKeys[mt_rand(0, count($stKeys) - 1)] . '/' . mazeRenewId(mt_rand(10000, 89999), $smDayStr); } else $spath = '/' . $smPick($sections) . '/' . trim(slugify(titleWords($smPick($docPages))), '-') . '/' . mazeRenewId(mt_rand(10000, 89999), $smDayStr);
             if (isset($smUsed[$spath])) continue;
             $smUsed[$spath] = true; $smCount++;
             // Consume the lastmod draws in the original order (their
@@ -1584,9 +1614,9 @@ function buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$linkH
         if($gSlug==='' || !isset($topicGroups[$gSlug])) { $gKeys=array_keys($topicGroups); $gSlug=$gKeys[mt_rand(0,count($gKeys)-1)]; }
         $tKeys=array_keys($topicGroups[$gSlug]['topics']); $slug=$tKeys[mt_rand(0,count($tKeys)-1)];
         $s='learn'; $basePath='/learn/'.$gSlug.'/'.$slug;
-        $id=mt_rand(10000,89999); $idGuard=0; while(isset($GLOBALS['mazeUsedIds'][$id]) && $GLOBALS['mazeUsedIds'][$id]!==$basePath && $idGuard<400){ $id=mt_rand(10000,89999); $idGuard++; } $GLOBALS['mazeUsedIds'][$id]=$basePath; $path=$basePath.'/'.$id; $label=topicLinkLabel($s,$slug); return ['label'=>$label,'url'=>$scheme.'://'.$urlHost.$port.$path,'path'=>$path,'section'=>$s,'topic'=>$slug,'group'=>$gSlug];
+        $id=mt_rand(10000,89999); $idGuard=0; while(isset($GLOBALS['mazeUsedIds'][$id]) && $GLOBALS['mazeUsedIds'][$id]!==$basePath && $idGuard<400){ $id=mt_rand(10000,89999); $idGuard++; } $GLOBALS['mazeUsedIds'][$id]=$basePath; $id=mazeRenewId($id, $GLOBALS['todayStr'] ?? ''); $path=$basePath.'/'.$id; $label=topicLinkLabel($s,$slug); return ['label'=>$label,'url'=>$scheme.'://'.$urlHost.$port.$path,'path'=>$path,'section'=>$s,'topic'=>$slug,'group'=>$gSlug];
     }
-    $s=pick($sections); $slug=trim(slugify(titleWords(pick($docPages))),'-'); if($slug==='') $slug=$s; $basePath='/'.$s.'/'.$slug; $id=mt_rand(10000,89999); $idGuard=0; while(isset($GLOBALS['mazeUsedIds'][$id]) && $GLOBALS['mazeUsedIds'][$id]!==$basePath && $idGuard<400){ $id=mt_rand(10000,89999); $idGuard++; } $GLOBALS['mazeUsedIds'][$id]=$basePath; $path=$basePath.'/'.$id; $label=topicLinkLabel($s,$slug); return ['label'=>$label,'url'=>$scheme.'://'.$urlHost.$port.$path,'path'=>$path,'section'=>$s]; }
+    $s=pick($sections); $slug=trim(slugify(titleWords(pick($docPages))),'-'); if($slug==='') $slug=$s; $basePath='/'.$s.'/'.$slug; $id=mt_rand(10000,89999); $idGuard=0; while(isset($GLOBALS['mazeUsedIds'][$id]) && $GLOBALS['mazeUsedIds'][$id]!==$basePath && $idGuard<400){ $id=mt_rand(10000,89999); $idGuard++; } $GLOBALS['mazeUsedIds'][$id]=$basePath; $id=mazeRenewId($id, $GLOBALS['todayStr'] ?? ''); $path=$basePath.'/'.$id; $label=topicLinkLabel($s,$slug); return ['label'=>$label,'url'=>$scheme.'://'.$urlHost.$port.$path,'path'=>$path,'section'=>$s]; }
 // De-duplicates by URL (via $used, shared across lists) AND by label
 // within the returned list, so every visible title in one list is
 // distinct even though the trailing path number is not part of it.
@@ -1600,7 +1630,7 @@ function uniqueLinks($n,$scheme,$baseDomain,$port,$subWords,$sections,$docPages,
     topics differ, so labels (which name their topic) stay distinct. */
     if($catalogSets){ mazeCatalogResetSet(); $prevForce=$GLOBALS['mazeForceCatalog']??false; $GLOBALS['mazeForceCatalog']=true; $out=[]; $guard=0;
         while(count($out)<$n && $guard<$n*20){ $guard++; $c=buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$linkHost); if(($c['section']??'')!=='learn') continue;
-            $idTries=0; while(isset($used[$c['url']]) && $idTries<20){ $idTries++; $newId=mt_rand(10000,89999); if(isset($GLOBALS['mazeUsedIds'][$newId])) continue; $bp=preg_replace('#/\d+$#','',$c['path']); $GLOBALS['mazeUsedIds'][$newId]=$bp; $c['path']=$bp.'/'.$newId; $c['url']=preg_replace('#/\d+$#','/'.$newId,$c['url']); }
+            $idTries=0; while(isset($used[$c['url']]) && $idTries<20){ $idTries++; $newId=mt_rand(10000,89999); if(isset($GLOBALS['mazeUsedIds'][$newId])) continue; $bp=preg_replace('#/\d+$#','',$c['path']); $GLOBALS['mazeUsedIds'][$newId]=$bp; $emitId=mazeRenewId($newId, $GLOBALS['todayStr'] ?? ''); $c['path']=$bp.'/'.$emitId; $c['url']=preg_replace('#/\d+$#','/'.$emitId,$c['url']); }
             if(isset($used[$c['url']])) continue; $used[$c['url']]=true; $out[]=$c; }
         $GLOBALS['mazeForceCatalog']=$prevForce; return $out; }
     $out=[];$tries=0;$labels=[];$topicCounts=[]; while(count($out)<$n&&$tries<$n*60){ $tries++; $c=buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$linkHost); if(isset($used[$c['url']])||isset($labels[$c['label']])) continue; /* SAME-TOPIC CAP (cold reviews 2026-11-22): within one capped list (the Explore block) a single slug topic may appear at most $topicCap times, so one topic cannot fill a block with reworded variants of itself ('Caching Guide' / 'Caching Guide Explained' / 'Caching Guide Overview' / ...). Different SECTIONS for the same topic still count toward the cap - section variety alone was not enough. */ if($topicCap>0){ $cSegs=explode('/',trim($c['path'],'/')); $cSlug=($cSegs[0]??'')==='learn' ? ($cSegs[2]??'') : ($cSegs[1]??''); if($cSlug!=='' && ($topicCounts[$cSlug]??0)>=$topicCap) continue; } $used[$c['url']]=true; $labels[$c['label']]=true; if($topicCap>0 && $cSlug!=='') $topicCounts[$cSlug]=($topicCounts[$cSlug]??0)+1; $out[]=$c; } return $out; }
