@@ -2008,6 +2008,19 @@ $ldTail=[
 ];
 if($layout==='home'||$layout==='pricing'){ $ldTail[]=['@type'=>'Product','name'=>$brand.' '.ucwords($topic),'description'=>$description,'brand'=>['@type'=>'Brand','name'=>$brand],'aggregateRating'=>['@type'=>'AggregateRating','ratingValue'=>$rating,'reviewCount'=>$reviewCount],'offers'=>['@type'=>'Offer','price'=>$planPrice,'priceCurrency'=>'USD','availability'=>'https://schema.org/InStock','url'=>$canonical]]; }
 $ldTail[]=['@type'=>'ItemList','name'=>'Explore '.$brand,'itemListElement'=>array_map(fn($i,$l)=>['@type'=>'ListItem','position'=>$i+1,'name'=>$l['label'],'url'=>$l['url']],array_keys(array_slice($links,0,12)),array_slice($links,0,12))];
+// BreadcrumbList on inner pages: the brand home (a real URL), the
+// page's category as a name-only crumb (categories have no hub page
+// to link to yet, and a breadcrumb must never point at a 404), then
+// the page itself. HowTo mirrors the rendered "Step by step" section
+// with the exact step strings the page prints, and appears only on
+// pages that render that section. Both nodes are built from values
+// already computed above - no new seeded draws.
+if(!$isHome && !$isCreatorProfile) $ldTail[]=['@type'=>'BreadcrumbList','itemListElement'=>[
+ ['@type'=>'ListItem','position'=>1,'name'=>$brand,'item'=>$scheme.'://'.$host.$port.'/'],
+ ['@type'=>'ListItem','position'=>2,'name'=>$category],
+ ['@type'=>'ListItem','position'=>3,'name'=>$title,'item'=>$canonical],
+]];
+if(in_array('steps',$sectionOrder,true) && !empty($mySteps)) $ldTail[]=['@type'=>'HowTo','name'=>$heading,'step'=>array_map(fn($i,$s)=>['@type'=>'HowToStep','position'=>$i+1,'text'=>$s],array_keys($mySteps),$mySteps)];
 $ld=['@context'=>'https://schema.org','@graph'=>array_merge($ldGraph,$ldTail)];
 $ldJson=json_encode($ld, JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
 // Geo place is a host trait - picked in Phase A above.
