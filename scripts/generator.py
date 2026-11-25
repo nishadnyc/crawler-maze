@@ -174,7 +174,7 @@ def categorize(path):
 
 # ---------------------------------------------------------------------- load
 def new_group():
-    return dict(total=0, clicked=0, direct=0, robots=0, banned=0, bans=0, forms=0, robots_violations=0,
+    return dict(total=0, clicked=0, direct=0, robots=0, banned=0, bans=0, robots_violations=0,
                 subnets=set(), ips=set(), iphashes=set(), sections=collections.Counter(), hosts=collections.Counter(), hosts_banned=collections.Counter(),
                 topics=collections.Counter(), topic_groups=collections.Counter(), topics_other=0, topic_groups_other=0, topics_backfilled=0,
                 ua="", first=10**12, last=0)
@@ -218,7 +218,6 @@ def load(logs_dir):
                            ("robots", "robots"), ("banned", "banned_hits"), ("bans", "ban_count"),
                            ("robots_violations", "robots_violations")):
                 x[k] += g.get(src, 0) if isinstance(g.get(src, 0), int) else 0
-            x["forms"] += g.get("form_submissions", 0)
             x["subnets"].add(sn)
             x["iphashes"].update(g.get("ip_hashes", {}))
             for fld in ("hosts", "hosts_banned"):
@@ -255,7 +254,6 @@ def load(logs_dir):
                             ("robots_violations", "robots_violations")):
                 if isinstance(pg.get(srcf), int):
                     x[k] += pg[srcf]
-            x["forms"] += pg.get("form_submissions", 0) if isinstance(pg.get("form_submissions"), int) else 0
             x["subnets"].add(sn)
             for fld in ("hosts", "hosts_banned", "topics", "topic_groups"):
                 if isinstance(pg.get(fld), dict):
@@ -399,8 +397,6 @@ def build_html_block(info):
                  for r_ in info["day_rows"])
     out.append('<h3 class="rh">Recent days</h3>')
     out.append(f'<div class="rtable"><table><thead><tr>{th}</tr></thead><tbody>{tr}</tbody></table></div>')
-    out.append(f'<p class="detail" style="color:#9fb3c8;font-size:.9rem;margin:12px 0 0;">Honeypot login form: '
-               f'<b style="color:#e6edf3;">{info["forms"]:,} submissions</b>.</p>')
     return "\n".join(out)
 
 
@@ -471,7 +467,6 @@ def main():
         ["Hostnames seen", f"{len(hosts):,}"],
         ["Ban entries", f"{ban_entries:,}"],
         ["Requests logged during bans", f"{banned:,}"],
-        ["Form submissions (honeypot)", f"{sum(g['forms'] for g in groups.values()):,}"],
     ], ["l", "r"]))
 
     # --- traffic mix
@@ -789,14 +784,6 @@ def main():
     else:
         L.append("No probe-style paths seen.")
 
-    # --- honeypot
-    forms = [(k, g) for k, g in groups.items() if g["forms"]]
-    if forms:
-        L.append("\n## Honeypot form submissions\n")
-        L.append(table(["Group", "Submissions", "Ranges"],
-                       [[f"`{k}`", g["forms"], ", ".join(f"`{s}`" for s in sorted(g["subnets"]))] for k, g in forms],
-                       ["l", "r", "l"]))
-
     L.append("\n## Notes\n")
     L.append("- Totals use each group's own hit counter; per-IP counters in the logs are rolling-window values and undercount heavy hitters.")
     if reader:
@@ -889,8 +876,7 @@ def main():
             window=f"{U(first)} to {U(last)} UTC", nfiles=nfiles, tiles=tiles, bots=bots_info, others=others_info,
             chips=sorted(secs.items(), key=lambda kv: (-kv[1], kv[0]))[:6], day_cols=dcols, day_rows=day_rows,
             topic_focus=topic_focus_rows, topic_note=topic_note, topic_groups=topic_group_rows,
-            robots_violations=robots_violation_rows,
-            forms=sum(g["forms"] for g in groups.values()))))
+            robots_violations=robots_violation_rows)))
 
 
 if __name__ == "__main__":
