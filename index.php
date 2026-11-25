@@ -43,10 +43,10 @@ if (empty($_COOKIE['_vid']) && empty($_COOKIE['maze_visit'])) {
  *    3. Request context - scheme / host / path, visitor IP, subnet, agent
  *    4. Ban check - .maze-bans.json is checked first; banned = instant 429
  *    5. Daily per-subnet log - ONE read/modify/write of today's JSON file
- *       for the visitor's /16 subnet (counts, groups, honeypot posts)
+ *       for the visitor's /16 subnet (counts, groups)
  *    6. robots.txt / sitemap.xml - generated on the fly, same host only
  *    7. Page assembly - random brand/topic/links, JSON-LD, meta tags
- *    8. HTML template - the visible page + the hidden honeypot login form
+ *    8. HTML template - the visible page
  *
  *  MAINTENANCE RULES
  *    - PHP comments only in the HTML part too (wrapped in <?php /* * / ?>):
@@ -782,7 +782,7 @@ function mazeFoldPrunedGroup(array &$data, string $agentKey, array $grp): void {
 }
 // Apply ONE queued hit to a daily subnet file's data, replicating exactly
 // what the old direct write did for that hit (counters, group stats,
-// topics, honeypot first-5 rule, window counts, >2000/hour ban decision),
+// topics, window counts, >2000/hour ban decision),
 // plus the persistent per-day totals section. Banned hits only bump
 // banned_hits / hosts_banned / totals, as the old early path did - except
 // the group entry is now created when missing, so a banned hit is never
@@ -870,16 +870,6 @@ function mazeApplyQueuedHit(array &$data, array $hit, int $banSeconds): array {
     $grp['last_path'] = substr($requestPath, 0, 120);
     $catTopicHit = mazeTopicFromPath($requestPath);
     if ($catTopicHit !== null) { bumpCatalogCount($grp, 'topics', $catTopicHit['slug'], 100); bumpCatalogCount($grp, 'topic_groups', $catTopicHit['group'], 20); }
-    $formCount = (int)($grp['form_submissions'] ?? 0);
-    if (isset($hit['form']) && is_array($hit['form'])) {
-        if ($formCount < 5) {
-            $grp['form_submissions'] = $formCount + 1; $formCount++;
-            $res['form_accepted'] = true;
-            if (!isset($grp['form_posts']) || !is_array($grp['form_posts'])) $grp['form_posts'] = [];
-            $grp['form_posts'][] = ['ts' => $nowTs, 'host' => $host, 'path' => substr($requestPath, 0, 120), 'data' => $hit['form']];
-        } else { $grp['form_submissions_blocked'] = (int)($grp['form_submissions_blocked'] ?? 0) + 1; }
-    }
-    $res['form_count'] = $formCount;
     unset($grp);
     // Housekeeping with the prune fix: idle entries may still be dropped
     // to keep the file small, but a GROUP's accumulated counters are first
@@ -1132,29 +1122,23 @@ if ($shouldBlock) {
     exit;
 }
 // ---------------------------------------------------------------------------
-// SECTION 6 - Daily per-subnet log + honeypot (ONE file read/write per hit)
+// SECTION 6 - Daily per-subnet log (ONE file read/write per hit)
 // File: logs/<subnet>_<YYYY-MM-DD>.json  (date in America/New_York; a fresh
 // file each day, old days are kept untouched). The logs/ folder carries its
 // own deny-all .htaccess, created here if missing.
-// Everything for this hit - counters, group stats, honeypot submissions,
+// Everything for this hit - counters, group stats,
 // new-ban decisions - happens inside the single locked read/modify/write
 // below, so a hit never opens the file twice.
-// Session rule: sessions live ONLY in the visitor's own cookie
-// (maze_session). The server stores no session list and cross-checks
-// nothing - if the request headers carry the cookie, the form is hidden.
 // ---------------------------------------------------------------------------
-$showHiddenForm = true;
-$loginSuccess = false;
-if (!empty($_COOKIE['sid']) || !empty($_COOKIE['maze_session'])) $showHiddenForm = false;
+// FORMS REMOVED (issue #39, 2026-11-25): the honeypot login form, its
+// maze_session/sid cookie mechanics and the "Login successful" popup are
+// gone. The log schema keeps its form counters (form_submissions etc.) -
+// they simply never increment now, so generator.py reports don't break.
 // QUEUE FIRST (Section 4b): append this hit to the log queue, then drain
 // opportunistically so it lands in the daily JSON before we answer. Only
 // when the append itself fails do we fall back to the legacy direct write
 // in the else block below - a hit is never silently dropped.
-$hitForm = null;
-if ((($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') && isset($_POST['login_form'])) {
-    $hitForm = [];
-    foreach (['email', 'username', 'password'] as $fn) { if (isset($_POST[$fn])) $hitForm[$fn] = substr(trim((string)$_POST[$fn]), 0, 120); }
-}
+$hitForm = null; // always null since issue #39 removed the forms; the queue hit keeps the field so the log schema is unchanged.
 $refererHdr = (string)($_SERVER['HTTP_REFERER'] ?? '');
 $queuedHit = ['id' => $nowTs . '-' . bin2hex(random_bytes(6)), 'ts' => $nowTs, 'day' => $todayStr,
     'ip' => $visitorIp, 'visitor_subnet' => $visitorSubnet, 'subnet' => $groupSubnet, 'agent' => $agentKey,
@@ -1167,10 +1151,6 @@ if ($queuedOk) {
     mazeDrainForRequest($queuedHit['id'], $drainResults);
     $myRes = $drainResults[$queuedHit['id']] ?? null;
     if (is_array($myRes)) {
-        if (!empty($myRes['form_accepted'])) {
-            $sessTok = bin2hex(random_bytes(16)); setcookie('sid', $sessTok, time() + 2592000, '/'); $loginSuccess = true;
-        }
-        if (($myRes['form_count'] ?? null) !== null) $showHiddenForm = ($myRes['form_count'] < 5) && empty($_COOKIE['sid']) && empty($_COOKIE['maze_session']);
         if (!empty($myRes['new_ban'])) $shouldBlock = true;
     }
 } else {
@@ -1235,22 +1215,6 @@ if ($sf) {
         // can rank the 100 topics by bot interest. Old logs lack the keys.
         $catTopicHit = mazeTopicFromPath($requestPath);
         if ($catTopicHit !== null) { bumpCatalogCount($grp, 'topics', $catTopicHit['slug'], 100); bumpCatalogCount($grp, 'topic_groups', $catTopicHit['group'], 20); }
-        // Honeypot: a POST with the login_form marker is a form submission.
-        // The first 5 per group are logged in full (host, path, timestamp and
-        // the submitted field values, trimmed to 120 chars each); each also
-        // earns the "Login successful" popup + a maze_session cookie.
-        // Submissions past 5 are only counted (form_submissions_blocked).
-        $formCount = (int)($grp['form_submissions'] ?? 0);
-        if ((($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') && isset($_POST['login_form'])) {
-            if ($formCount < 5) {
-                $grp['form_submissions'] = $formCount + 1; $formCount++;
-                $sessTok = bin2hex(random_bytes(16)); setcookie('sid', $sessTok, time() + 2592000, '/'); $loginSuccess = true;
-                if (!isset($grp['form_posts']) || !is_array($grp['form_posts'])) $grp['form_posts'] = [];
-                $fd = []; foreach (['email','username','password'] as $fn) { if (isset($_POST[$fn])) $fd[$fn] = substr(trim((string)$_POST[$fn]), 0, 120); }
-                $grp['form_posts'][] = ['ts' => $nowTs, 'host' => $host, 'path' => substr($requestPath, 0, 120), 'data' => $fd];
-            } else { $grp['form_submissions_blocked'] = (int)($grp['form_submissions_blocked'] ?? 0) + 1; }
-        }
-        $showHiddenForm = ($formCount < 5) && empty($_COOKIE['sid']) && empty($_COOKIE['maze_session']);
         unset($grp);
         // Housekeeping: drop ips/agents/groups idle for 2+ hours so today's
         // file stays small, then apply the rate limit: more than 2000 hits in
@@ -1456,8 +1420,8 @@ if (str_ends_with($requestPath, 'sitemap.xml')) {
 // purpose: a host-only cookie set on abc.nishad.top would never be
 // sent after following a link to a different subdomain, which would
 // break the session exactly when the domain hops. This cookie is
-// separate from maze_visit (first-seen group, for logging/banning)
-// and from maze_session (honeypot) - neither of those is touched.
+// separate from maze_visit (first-seen group, for logging/banning),
+// which is not touched.
 // ---------------------------------------------------------------------------
 $canonical=$scheme.'://'.$host.$port.$requestPath;
 // Show the creator credit on 40% of normal maze URLs. These hashes avoid the
@@ -1851,38 +1815,11 @@ $readMinutes=mt_rand(4,18); $commentCount=mt_rand(0,89); $viewCount=number_forma
 $pageRef=substr(md5($host.'|'.$requestPath),0,18);
 
 $used=[]; $mainLink=buildUrl($scheme,$baseDomain,$port,$subWords,$sections,$docPages,$linkDomain); $used[$mainLink['url']]=true;
-// TRIAL CTA TARGET (cold-review fix 2026-11-22): the "Start your free
-// trial" button used to reuse $mainLink - a random maze article on the
-// cookie link domain - so following it landed on an unrelated blog
-// post with no signup in sight. The CTA now points at a plausible
-// start page on the VISITED host itself: /pricing/getting-started/
-// (a pricing-layout page whose slug topic is getting started). The ID
-// is hash-derived from the host - no mt_rand consumed, so no seeded
-// sequence shifts - which makes the target identical on every page of
-// the host and stable across fetches.
-$trialId=10000 + (hexdec(substr(hash('sha256','trial|'.$host),0,6)) % 89999);
-// Issue #4 fix: that formula spans 10000-99998, but the path validator
-// only accepts IDs up to 89999, so hosts whose hash landed at 90000+
-// (e.g. velvet-river: 91326) got a trial button that 404s. Fold just
-// the overflow band back into range (90000-99998 -> 10000-19998);
-// in-range IDs are untouched, so hosts whose CTA already works keep
-// the exact same URL. Still no mt_rand consumed.
-if($trialId>89999) $trialId-=80000;
-$trialLink=['url'=>$scheme.'://'.$host.$port.'/pricing/getting-started/'.$trialId,'path'=>'/pricing/getting-started/'.$trialId,'section'=>'pricing'];
-$used[$trialLink['url']]=true;
-// TRIAL SIGNUP FORM (issue #10): the CTA target page itself. Until now it
-// rendered as a plain pricing-layout page with no form at all, so a visitor
-// who clicked "Start your free trial" found nowhere to sign up. This page -
-// and ONLY this page - now carries a real, visible signup form (see
-// SECTION 9). Detection is a plain string comparison and the POST check
-// only looks at the form's own marker, so no mt_rand is consumed and no
-// seeded sequence shifts; a plain GET stays byte-identical. The signup
-// POST is handled purely at render time below: no account is created, no
-// email is sent, and the submitted values are never read or logged - this
-// is fully separate from the honeypot login form (different marker,
-// different field names, no logging, no cookie).
-$isTrialPage=($requestPath===$trialLink['path']);
-$signupDone=$isTrialPage && (($_SERVER['REQUEST_METHOD'] ?? '')==='POST') && isset($_POST['signup_form']);
+// CTA TARGET (issue #39, 2026-11-25): the trial signup form experiment
+// is removed. The CTA button (SECTION 9) reuses $mainLink - a generated
+// maze link - with the label "See plans and pricing", restoring the
+// pre-2026-11-22 behaviour. Nothing here consumes seeded RNG draws, so
+// no page's seeded sequence shifts.
 // EXPLORE SETS OF 10 (Nishad follow-up 2026-11-24): the Explore list is
 // purely catalog topic links in whole sets of 10 (one topic from each of
 // the 10 groups per set, no legacy hosting links inside the sets), so
@@ -2077,7 +2014,7 @@ header('Link: <'.$canonical.'>; rel="canonical"');
 <?php endforeach; ?><?php endif; ?>
 <meta name="twitter:card" content="summary"><meta name="twitter:title" content="<?=e($title)?>"><meta name="twitter:description" content="<?=e($description)?>">
 <script type="application/ld+json"><?= $ldJson ?></script>
-<style>*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#0f172a;color:#e2e8f0}.wrap{max-width:860px;margin:0 auto;padding:32px 24px 64px}.brand{color:<?=$accent?>;font-weight:700;letter-spacing:1px;font-size:14px;text-transform:uppercase}h1{font-size:34px;line-height:1.25;margin:12px 0 20px;color:#fff}h2{font-size:21px;color:#fff;margin:32px 0 12px}h3{font-size:17px;color:#fff;margin:20px 0 8px}p{line-height:1.7;color:#cbd5e1;margin:0 0 16px}.btn{display:inline-block;margin:16px 0 32px;padding:14px 30px;font-size:17px;font-weight:700;color:#fff;background:#2563eb;border-radius:10px;text-decoration:none}.meta{color:#94a3b8;font-size:14px;margin:-8px 0 24px;line-height:1.6}ul.links{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:1fr 1fr;gap:8px 24px}ul.links a{color:#94a3b8;text-decoration:none;font-size:15px}.box{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:4px 20px 12px;margin:24px 0}.box a,.wrap a{color:<?=$accent?>}nav a{margin-right:14px;color:#cbd5e1;text-decoration:none;font-size:14px}.cards{display:grid;grid-template-columns:1fr 1fr;gap:16px;list-style:none;padding:0;margin:0}.card{background:#1e293b;border:1px solid #334155;border-radius:12px;overflow:hidden}.card div{padding:12px 16px}.tags{list-style:none;padding:0;margin:0}.tags li{display:inline-block}.tags a{display:inline-block;background:#1e293b;border:1px solid #334155;border-radius:999px;padding:6px 12px;margin:4px;color:#cbd5e1;text-decoration:none;font-size:13px}table{width:100%;border-collapse:collapse}td,th{border-bottom:1px solid #334155;padding:10px;text-align:left;color:#cbd5e1}footer{margin-top:48px;color:#475569;font-size:13px}footer a{color:#94a3b8;text-decoration:none;margin-right:10px}form#signup_form label{display:block;margin:14px 0 6px;color:#cbd5e1;font-size:15px}form#signup_form input,form#signup_form select{width:100%;padding:11px 12px;margin-top:6px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:15px}form#signup_form button{cursor:pointer;border:none}</style>
+<style>*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#0f172a;color:#e2e8f0}.wrap{max-width:860px;margin:0 auto;padding:32px 24px 64px}.brand{color:<?=$accent?>;font-weight:700;letter-spacing:1px;font-size:14px;text-transform:uppercase}h1{font-size:34px;line-height:1.25;margin:12px 0 20px;color:#fff}h2{font-size:21px;color:#fff;margin:32px 0 12px}h3{font-size:17px;color:#fff;margin:20px 0 8px}p{line-height:1.7;color:#cbd5e1;margin:0 0 16px}.btn{display:inline-block;margin:16px 0 32px;padding:14px 30px;font-size:17px;font-weight:700;color:#fff;background:#2563eb;border-radius:10px;text-decoration:none}.meta{color:#94a3b8;font-size:14px;margin:-8px 0 24px;line-height:1.6}ul.links{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:1fr 1fr;gap:8px 24px}ul.links a{color:#94a3b8;text-decoration:none;font-size:15px}.box{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:4px 20px 12px;margin:24px 0}.box a,.wrap a{color:<?=$accent?>}nav a{margin-right:14px;color:#cbd5e1;text-decoration:none;font-size:14px}.cards{display:grid;grid-template-columns:1fr 1fr;gap:16px;list-style:none;padding:0;margin:0}.card{background:#1e293b;border:1px solid #334155;border-radius:12px;overflow:hidden}.card div{padding:12px 16px}.tags{list-style:none;padding:0;margin:0}.tags li{display:inline-block}.tags a{display:inline-block;background:#1e293b;border:1px solid #334155;border-radius:999px;padding:6px 12px;margin:4px;color:#cbd5e1;text-decoration:none;font-size:13px}table{width:100%;border-collapse:collapse}td,th{border-bottom:1px solid #334155;padding:10px;text-align:left;color:#cbd5e1}footer{margin-top:48px;color:#475569;font-size:13px}footer a{color:#94a3b8;text-decoration:none;margin-right:10px}</style>
 </head>
 <body><div class="wrap">
 <?php /* SECTION 9 - HTML template. Header: brand, nav (8 maze links), breadcrumb. */ ?>
@@ -2093,10 +2030,7 @@ header('Link: <'.$canonical.'>; rel="canonical"');
 <h1><?=e($heading)?></h1>
 <?php endif; ?>
 <?php foreach(array_slice($paragraphs,0,3) as $p): ?><p><?=e($p)?></p><?php endforeach; ?>
-<?php if(!$isCreatorProfile && $requestPath!==$trialLink['path']): ?><a class="btn" href="<?=e($trialLink['url'])?>">Start your free trial with <?=e($brand)?></a>
-<?php endif; ?>
-<?php /* TRIAL SIGNUP FORM (issue #10): rendered ONLY on the getting-started page the trial CTA points at ($isTrialPage). A normal visible form - its own marker (signup_form) and field names, nothing shared with the hidden honeypot login form further down. On POST the form is replaced by a confirmation; the submitted values are never read, stored or logged. */ ?>
-<?php if(!empty($isTrialPage)): ?><section id="signup" class="box"><h2>Create your account</h2><?php if(!empty($signupDone)): ?><p><strong>Thanks - your free trial with <?=e($brand)?> is being set up.</strong></p><p>We have sent a setup link to the email address you gave us; it usually arrives within a couple of minutes. Follow it to choose your password and open your control panel. No card is required for the trial.</p><?php else: ?><p>Start your free trial with <?=e($brand)?> - no card required. Tell us where to create the account and which plan to start on; you can change plans at any time.</p><form id="signup_form" method="post" action=""><input type="hidden" name="signup_form" value="1"><label>Full name <input type="text" name="signup_name" required autocomplete="name"></label><label>Email address <input type="email" name="signup_email" required autocomplete="email"></label><label>Site name <input type="text" name="signup_site" required autocomplete="off" placeholder="my-site"> <span style="color:#94a3b8">.<?=e($baseDomain)?></span></label><label>Plan <select name="signup_plan"><?php foreach($plans as $pl): ?><option value="<?=e($pl['name'])?>"><?=e($pl['name'])?> - $<?=e($pl['price'])?> / month</option><?php endforeach; ?></select></label><button type="submit" class="btn">Start your free trial</button></form><?php endif; ?></section>
+<?php if(!$isCreatorProfile): ?><a class="btn" href="<?=e($mainLink['url'])?>">See plans and pricing</a>
 <?php endif; ?>
 <h2>On this page</h2><ul><?php foreach(array_values(array_filter([['features','Key features'],['pricing','Pricing plans'],['faq','Frequently asked questions'],['testimonials','What customers say'],['glossary','Glossary'],['status','Service status'],['steps','Step by step'],['statusboard','Current service status'],['company','About us']], fn($o)=>in_array($o[0],$sectionOrder,true))) as $otp): ?><li><a href="#<?=e($otp[0])?>"><?=e($otp[1])?> - <?=e($topic)?></a></li><?php endforeach; ?></ul>
 <?php foreach(array_slice($paragraphs,3) as $p): ?><p><?=e($p)?></p><?php endforeach; ?>
@@ -2123,10 +2057,6 @@ header('Link: <'.$canonical.'>; rel="canonical"');
 <?php if(!$isCreatorProfile): ?>
 <aside><h2>Popular guides</h2><p>Read our guide to <?=e($asideTopic)?>, learn about <?=e($asideDoc)?>, or browse the <?=e($asideSection)?> section.</p><h2>Member login</h2><p>Log in to join the discussion. Last activity <?=e($updated)?>.</p></aside>
 <?php endif; ?>
-<?php /* Honeypot payoff: after a form submission, show the green "Login successful" popup (auto-hides after 5s). The matching maze_session cookie was already set in SECTION 6. */ ?>
-<?php if (!empty($loginSuccess)): ?><div id="hploginok" role="alert" style="position:fixed;top:16px;right:16px;background:#1a7f37;color:#fff;padding:12px 18px;border-radius:8px;z-index:9999;font-family:sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.3)">Login successful</div><script>setTimeout(function(){var e=document.getElementById('hploginok');if(e){e.style.display='none';}},5000);</script><?php endif; ?>
-<?php /* The hidden honeypot login form: positioned far off-screen, never shown to humans. Fields are ONLY Login email, Login username and Login password - exactly what a login form asks for (the old version also carried Website / Full name / Message fields, which no login form has - audit B8). Rendered only when the group is under 5 submissions AND the visitor sent no maze_session cookie. */ ?>
-<?php if (!empty($showHiddenForm)): ?><form class="hpform" method="post" action="" style="position:absolute;left:-9999px;top:-9999px" aria-hidden="true"><input type="hidden" name="login_form" value="1"><label>Login email <input type="email" name="email" tabindex="-1" autocomplete="email"></label><label>Login username <input type="text" name="username" tabindex="-1" autocomplete="username"></label><label>Login password <input type="password" name="password" tabindex="-1" autocomplete="current-password"></label><button type="submit" tabindex="-1">Log in</button></form><?php endif; ?>
 <?php /* Footer: 40 maze links under a "Sitemap" heading, each on its OWN random subdomain (see $footerSitemapLinks above), copyright line, random page reference. */ ?>
 <footer><h2 style="font-size:16px">Sitemap</h2><?php foreach($footerSitemapLinks as $l): ?><a href="<?=e($l['url'])?>"><?=e($l['label'])?></a><?php endforeach; ?><p><?php foreach($legalLinks as $ll): ?><a href="<?=e($ll['url'])?>"><?=e($ll['label'])?></a><?php endforeach; ?></p><p>&copy; <?=date('Y')?> <a href="<?=e($hashLink['url'])?>"><?=e($brand)?></a>. All rights reserved. &middot; Last updated <?=e($updated)?> &middot; Ref <?=e($pageRef)?> &middot; <?=e($category)?> &middot; <?=e(implode(' | ',array_slice($myTags,0,5)))?></p><?php if($showCreatorCredit): ?><p>Interesting read <a href="<?=e($scheme.'://'.$host.$port.$creatorProfilePath)?>">Click Here</a></p><?php endif; ?></footer>
 </div></body></html>
